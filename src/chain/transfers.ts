@@ -11,6 +11,7 @@ import {
 import { NETWORKS, type NetworkId } from '../config/networks'
 import { cached } from '../lib/cache'
 import { getPublicClient } from '../lib/clients'
+import { getEtherscanApiKey } from '../lib/env'
 import { formatTokenAmount } from '../lib/format'
 
 export type TransferSource = 'explorer-api' | 'rpc-logs'
@@ -149,7 +150,7 @@ async function etherscanAccountAction<T>(
   action: 'tokentx' | 'txlist',
 ): Promise<T[]> {
   const chainId = NETWORKS[networkId].chainId
-  const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY
+  const apiKey = getEtherscanApiKey()
   const params = new URLSearchParams({
     chainid: String(chainId),
     module: 'account',

@@ -1,39 +1,28 @@
-# Render Blueprint — SettlementOS Explorer (static SPA)
+# Render Blueprint — SettlementOS Explorer (Node web + MCP)
 # Dashboard: New → Blueprint → connect this repo
 # Docs: https://render.com/docs/blueprint-spec
 
 services:
   - type: web
     name: settlementos-explorer
-    runtime: static
-    plan: free
+    runtime: node
+    plan: starter
     branch: main
     autoDeployTrigger: commit
     buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
+    startCommand: npm start
+    healthCheckPath: /api/health
 
-    # SPA deep links ( /:networkId/address/:address , /entity/:id , /graph )
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-
-    headers:
-      - path: /assets/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-      - path: /index.html
-        name: Cache-Control
-        value: no-cache
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-
-    # Optional — set in the Render dashboard after create (build-time Vite env).
-    # Leave blank to run keyless with eth_getLogs fallback.
     envVars:
+      - key: NODE_VERSION
+        value: "22"
       - key: VITE_ETHERSCAN_API_KEY
+        sync: false
+      - key: MCP_API_KEY
+        sync: false
+      - key: MCP_OAUTH_CLIENT_ID
+        sync: false
+      - key: MCP_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: MCP_PUBLIC_URL
         sync: false
