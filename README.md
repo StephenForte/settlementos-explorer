@@ -35,11 +35,23 @@ Optional: copy `.env.example` to `.env` and set `VITE_ETHERSCAN_API_KEY` for hig
 
 ## Deploy
 
-Static SPA. Configured for Vercel (`vercel.json` SPA rewrites). GitHub Pages also works if you set the base path appropriately.
+Static SPA (no server). Preferred host: **Render** via the Blueprint in `render.yaml`.
+
+### Render (recommended)
+
+1. In [Render](https://dashboard.render.com): **New → Blueprint**
+2. Connect `StephenForte/settlementos-explorer` (branch `main`)
+3. Apply the Blueprint — creates a free static site
+4. When prompted, optionally set `VITE_ETHERSCAN_API_KEY` (same key as local `.env`)
+5. After deploy, open the `*.onrender.com` URL
+
+SPA deep links are covered by the Blueprint rewrite to `index.html`. Auto-deploys on every push to `main`.
+
+Also works on Vercel (`vercel.json`) or any static host of `dist/`:
 
 ```bash
 npm run build
-# deploy dist/ — e.g. `vercel --prod`
+# deploy contents of dist/
 ```
 
 CI (GitHub Actions) runs typecheck, lint, tests, and build on every push/PR.
