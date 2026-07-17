@@ -31,6 +31,7 @@ Optional: copy `.env.example` to `.env` and set `VITE_ETHERSCAN_API_KEY` for hig
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | oxlint |
 | `npm test` | vitest |
+| `npm run test:coverage` | vitest with V8 coverage report |
 | `npm run preview` | Preview the production build |
 
 ## Deploy
