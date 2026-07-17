@@ -156,11 +156,12 @@ function MergedTimeline({
                 if (item.kind === 'transfer') {
                   return (
                     <tr
-                      key={`${item.networkId}-${item.txHash}-${item.from}-${item.to}-${item.token.address}`}
+                      key={`t-${item.networkId}-${item.txHash}-${item.from}-${item.to}-${item.token.address}`}
                     >
                       <td>{NETWORKS[item.networkId].name}</td>
                       <td>
                         {item.fromLabel} → {item.toLabel}
+                        <div className="muted small">Token transfer</div>
                       </td>
                       <td>
                         {item.amountFormatted} {item.token.symbol}
@@ -179,8 +180,38 @@ function MergedTimeline({
                     </tr>
                   )
                 }
+                if (item.kind === 'native') {
+                  return (
+                    <tr
+                      key={`n-${item.networkId}-${item.txHash}-${item.from}-${item.to}`}
+                    >
+                      <td>{NETWORKS[item.networkId].name}</td>
+                      <td>
+                        {item.fromLabel} → {item.toLabel}
+                        <div className="muted small">
+                          Native {item.symbol}
+                          {item.method ? ` · ${item.method}` : ''}
+                        </div>
+                      </td>
+                      <td>
+                        {item.amountFormatted} {item.symbol}
+                      </td>
+                      <td>{formatTimestamp(item.timestamp)}</td>
+                      <td>
+                        <a
+                          href={explorerTxUrl(item.networkId, item.txHash)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mono"
+                        >
+                          {truncateAddress(item.txHash, 6)}
+                        </a>
+                      </td>
+                    </tr>
+                  )
+                }
                 return (
-                  <tr key={`${item.networkId}-${item.txHash}-${item.eventName}`}>
+                  <tr key={`e-${item.networkId}-${item.txHash}-${item.eventName}`}>
                     <td>{NETWORKS[item.networkId].name}</td>
                     <td>{item.eventName}</td>
                     <td>

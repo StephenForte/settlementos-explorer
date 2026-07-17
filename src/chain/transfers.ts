@@ -30,6 +30,23 @@ export interface TransferEvent {
   timestamp: number | null
 }
 
+export interface NativeTxEvent {
+  kind: 'native'
+  networkId: NetworkId
+  from: string
+  to: string
+  fromLabel: string
+  toLabel: string
+  amountRaw: bigint
+  amountFormatted: string
+  symbol: string
+  txHash: string
+  blockNumber: number
+  timestamp: number | null
+  method?: string
+  failed?: boolean
+}
+
 export interface EscrowLifecycleEvent {
   kind: 'escrow'
   networkId: NetworkId
@@ -46,7 +63,7 @@ export interface EscrowLifecycleEvent {
   timestamp: number | null
 }
 
-export type TimelineItem = TransferEvent | EscrowLifecycleEvent
+export type TimelineItem = TransferEvent | NativeTxEvent | EscrowLifecycleEvent
 
 export interface TransfersResult {
   items: TimelineItem[]
@@ -72,6 +89,18 @@ interface EtherscanTokentxRow {
   blockNumber: string
 }
 
+interface EtherscanTxlistRow {
+  hash: string
+  from: string
+  to: string
+  value: string
+  timeStamp: string
+  blockNumber: string
+  isError?: string
+  functionName?: string
+  methodId?: string
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -89,16 +118,42 @@ export function annotateTransfer(
   }
 }
 
-async function fetchExplorerTransfers(
+function annotateNative(
+  networkId: NetworkId,
+  partial: Omit<
+    NativeTxEvent,
+    'fromLabel' | 'toLabel' | 'kind' | 'networkId' | 'symbol'
+  > & { symbol?: string },
+): NativeTxEvent {
+  return {
+    kind: 'native',
+    networkId,
+    symbol: partial.symbol ?? NETWORKS[networkId].nativeSymbol,
+    from: partial.from,
+    to: partial.to,
+    amountRaw: partial.amountRaw,
+    amountFormatted: partial.amountFormatted,
+    txHash: partial.txHash,
+    blockNumber: partial.blockNumber,
+    timestamp: partial.timestamp,
+    method: partial.method,
+    failed: partial.failed,
+    fromLabel: labelForAddress(networkId, partial.from),
+    toLabel: labelForAddress(networkId, partial.to),
+  }
+}
+
+async function etherscanAccountAction<T>(
   networkId: NetworkId,
   address: string,
-): Promise<TransferEvent[]> {
+  action: 'tokentx' | 'txlist',
+): Promise<T[]> {
   const chainId = NETWORKS[networkId].chainId
   const apiKey = import.meta.env.VITE_ETHERSCAN_API_KEY
   const params = new URLSearchParams({
     chainid: String(chainId),
     module: 'account',
-    action: 'tokentx',
+    action,
     address,
     startblock: '0',
     endblock: '99999999',
@@ -122,7 +177,7 @@ async function fetchExplorerTransfers(
     const body = (await res.json()) as {
       status: string
       message: string
-      result: EtherscanTokentxRow[] | string
+      result: T[] | string
     }
     const resultText =
       typeof body.result === 'string' ? body.result.toLowerCase() : ''
@@ -133,7 +188,11 @@ async function fetchExplorerTransfers(
       await sleep(800 * (attempt + 1))
       continue
     }
-    if (body.status === '0' && body.message === 'No transactions found') {
+    if (
+      body.status === '0' &&
+      (body.message === 'No transactions found' ||
+        resultText.includes('no transactions found'))
+    ) {
       return []
     }
     if (body.status !== '1' || !Array.isArray(body.result)) {
@@ -143,38 +202,100 @@ async function fetchExplorerTransfers(
           : body.message || 'Explorer API error',
       )
     }
-
-    const knownTokens = new Set(
-      getTokens(networkId).map((t) => t.address.toLowerCase()),
-    )
-
     return body.result
-      .filter((row) => knownTokens.has(row.contractAddress.toLowerCase()))
-      .map((row) => {
-        const token =
-          lookupToken(networkId, row.contractAddress) ?? {
-            address: row.contractAddress,
-            symbol: row.tokenSymbol || truncateAddress(row.contractAddress),
-            decimals: Number(row.tokenDecimal) || 0,
-          }
-        const amountRaw = BigInt(row.value)
-        return annotateTransfer(networkId, {
-          from: row.from,
-          to: row.to,
-          token,
-          amountRaw,
-          amountFormatted: formatTokenAmount(amountRaw, token.decimals),
-          txHash: row.hash,
-          blockNumber: Number(row.blockNumber),
-          timestamp: Number(row.timeStamp) || null,
-        })
-      })
   }
   throw new Error(
     lastStatus === 429
       ? 'Explorer API rate limited (429)'
       : 'Explorer API request failed',
   )
+}
+
+async function fetchExplorerTokenTransfers(
+  networkId: NetworkId,
+  address: string,
+): Promise<TransferEvent[]> {
+  const rows = await etherscanAccountAction<EtherscanTokentxRow>(
+    networkId,
+    address,
+    'tokentx',
+  )
+  const knownTokens = new Set(
+    getTokens(networkId).map((t) => t.address.toLowerCase()),
+  )
+
+  return rows
+    .filter((row) => knownTokens.has(row.contractAddress.toLowerCase()))
+    .map((row) => {
+      const token =
+        lookupToken(networkId, row.contractAddress) ?? {
+          address: row.contractAddress,
+          symbol: row.tokenSymbol || truncateAddress(row.contractAddress),
+          decimals: Number(row.tokenDecimal) || 0,
+        }
+      const amountRaw = BigInt(row.value)
+      return annotateTransfer(networkId, {
+        from: row.from,
+        to: row.to,
+        token,
+        amountRaw,
+        amountFormatted: formatTokenAmount(amountRaw, token.decimals),
+        txHash: row.hash,
+        blockNumber: Number(row.blockNumber),
+        timestamp: Number(row.timeStamp) || null,
+      })
+    })
+}
+
+async function fetchExplorerNativeTxs(
+  networkId: NetworkId,
+  address: string,
+): Promise<NativeTxEvent[]> {
+  const rows = await etherscanAccountAction<EtherscanTxlistRow>(
+    networkId,
+    address,
+    'txlist',
+  )
+  return rows.map((row) => {
+    const amountRaw = BigInt(row.value || '0')
+    const method =
+      row.functionName?.split('(')[0] ||
+      (row.methodId && row.methodId !== '0x' ? row.methodId : undefined)
+    return annotateNative(networkId, {
+      from: row.from,
+      to: row.to || address,
+      amountRaw,
+      amountFormatted: formatTokenAmount(amountRaw, 18),
+      txHash: row.hash,
+      blockNumber: Number(row.blockNumber),
+      timestamp: Number(row.timeStamp) || null,
+      method,
+      failed: row.isError === '1',
+    })
+  })
+}
+
+async function fetchExplorerActivity(
+  networkId: NetworkId,
+  address: string,
+): Promise<{ tokens: TransferEvent[]; native: NativeTxEvent[] }> {
+  const [tokenResult, nativeResult] = await Promise.allSettled([
+    fetchExplorerTokenTransfers(networkId, address),
+    fetchExplorerNativeTxs(networkId, address),
+  ])
+
+  const tokens =
+    tokenResult.status === 'fulfilled' ? tokenResult.value : ([] as TransferEvent[])
+  const native =
+    nativeResult.status === 'fulfilled' ? nativeResult.value : ([] as NativeTxEvent[])
+
+  if (tokenResult.status === 'rejected' && nativeResult.status === 'rejected') {
+    throw tokenResult.reason instanceof Error
+      ? tokenResult.reason
+      : new Error('Explorer API failed')
+  }
+
+  return { tokens, native }
 }
 
 async function getLogsChunked(
@@ -407,12 +528,15 @@ async function fetchTransfers(
   address: string,
 ): Promise<TransfersResult> {
   let transfers: TransferEvent[] = []
+  let native: NativeTxEvent[] = []
   let source: TransferSource = 'explorer-api'
   let truncated = false
   let error: string | undefined
 
   try {
-    transfers = await fetchExplorerTransfers(networkId, address)
+    const activity = await fetchExplorerActivity(networkId, address)
+    transfers = activity.tokens
+    native = activity.native
   } catch (err) {
     error = err instanceof Error ? err.message : 'Explorer API failed'
     try {
@@ -432,7 +556,7 @@ async function fetchTransfers(
   }
 
   const escrow = await fetchEscrowEvents(networkId, address).catch(() => [])
-  const items: TimelineItem[] = [...transfers, ...escrow]
+  const items: TimelineItem[] = [...transfers, ...native, ...escrow]
   items.sort((a, b) => {
     const tb = b.timestamp ?? 0
     const ta = a.timestamp ?? 0

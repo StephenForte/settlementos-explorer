@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { getBalances, type AddressBalances } from '../chain/balances'
 import {
   ENTITIES,
@@ -116,12 +116,38 @@ function AddressDirectoryRow({
   networkId: NetworkId
   balances?: AddressBalances
 }) {
+  const navigate = useNavigate()
+  const detailPath = `/${networkId}/address/${entry.address}`
+
+  const goDetail = () => navigate(detailPath)
+
+  const onRowClick = (event: MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement
+    if (target.closest('a, button')) return
+    goDetail()
+  }
+
+  const onRowKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      goDetail()
+    }
+  }
+
   return (
-    <article className="address-row">
+    <article
+      className="address-row address-row-clickable"
+      role="link"
+      tabIndex={0}
+      onClick={onRowClick}
+      onKeyDown={onRowKeyDown}
+      aria-label={`View transactions for ${entry.label}`}
+    >
       <div className="address-row-main">
         <div className="address-row-title">
-          <Link to={`/${networkId}/address/${entry.address}`}>{entry.label}</Link>
+          <Link to={detailPath}>{entry.label}</Link>
           <RoleBadge role={entry.role} />
+          <span className="row-hint">View txs →</span>
         </div>
         <div className="address-row-meta">
           <span className="mono">{truncateAddress(entry.address)}</span>

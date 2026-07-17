@@ -16,6 +16,68 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+function mockExplorerFetch(handlers: {
+  tokentx?: unknown
+  txlist?: unknown
+  fail?: boolean
+}) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (handlers.fail) {
+        return { ok: false, status: 500, json: async () => ({}) }
+      }
+      const url = String(input)
+      if (url.includes('action=txlist')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            handlers.txlist ?? {
+              status: '1',
+              message: 'OK',
+              result: [
+                {
+                  hash: '0xnative1',
+                  from: '0x5128889F20Ec13e0Be38b2BeBC568594159B652d',
+                  to: '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+                  value: '1000000000000000',
+                  timeStamp: '1700000001',
+                  blockNumber: '124',
+                  isError: '0',
+                  functionName: '',
+                  methodId: '0x',
+                },
+              ],
+            },
+        }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          handlers.tokentx ?? {
+            status: '1',
+            message: 'OK',
+            result: [
+              {
+                hash: '0xtx1',
+                from: '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+                to: '0x9d8b8b7c476ab02306046f3da719d380fa0456aa',
+                contractAddress: '0x2066738d535681d28d0841cc2503c1c531d4d6aa',
+                value: '25000000000',
+                tokenDecimal: '6',
+                tokenSymbol: 'mockUSDC',
+                timeStamp: '1700000000',
+                blockNumber: '123',
+              },
+            ],
+          },
+      }
+    }),
+  )
+}
+
 describe('annotateTransfer', () => {
   it('labels known counterparties and truncates unknowns', () => {
     const t = annotateTransfer('base-sepolia', {
@@ -38,31 +100,8 @@ describe('annotateTransfer', () => {
 })
 
 describe('getTransfers', () => {
-  it('parses explorer API happy path', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          status: '1',
-          message: 'OK',
-          result: [
-            {
-              hash: '0xtx1',
-              from: '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
-              to: '0x9d8b8b7c476ab02306046f3da719d380fa0456aa',
-              contractAddress: '0x2066738d535681d28d0841cc2503c1c531d4d6aa',
-              value: '25000000000',
-              tokenDecimal: '6',
-              tokenSymbol: 'mockUSDC',
-              timeStamp: '1700000000',
-              blockNumber: '123',
-            },
-          ],
-        }),
-      })),
-    )
+  it('parses explorer API happy path with token and native txs', async () => {
+    mockExplorerFetch({})
 
     const result = await getTransfers(
       'base-sepolia',
@@ -71,23 +110,22 @@ describe('getTransfers', () => {
     expect(result.source).toBe('explorer-api')
     expect(result.truncated).toBe(false)
     const transfer = result.items.find((i) => i.kind === 'transfer')
+    const native = result.items.find((i) => i.kind === 'native')
     expect(transfer?.kind).toBe('transfer')
     if (transfer?.kind === 'transfer') {
       expect(transfer.fromLabel).toBe('ACME US Inc')
       expect(transfer.toLabel).toBe('PaymentSettlement')
       expect(transfer.amountFormatted).toBe('25000')
     }
+    expect(native?.kind).toBe('native')
+    if (native?.kind === 'native') {
+      expect(native.symbol).toBe('ETH')
+      expect(native.toLabel).toBe('ACME US Inc')
+    }
   })
 
   it('falls back to RPC logs when explorer API errors', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: false,
-        status: 500,
-        json: async () => ({}),
-      })),
-    )
+    mockExplorerFetch({ fail: true })
 
     const result = await getTransfers(
       'base-sepolia',

@@ -118,15 +118,20 @@ function AddressDetail({
 
       <section className="section">
         <div className="section-head">
-          <h2>Transfer history</h2>
+          <h2>Transactions</h2>
           {transfers.status === 'error' ? (
             <button type="button" className="btn-ghost" onClick={transfers.retry}>
               Retry
             </button>
           ) : null}
         </div>
+        <p className="muted small">
+          Native {NETWORKS[networkId].nativeSymbol} transfers and SettlementOS
+          token transfers, newest first. Each tx links to{' '}
+          {NETWORKS[networkId].explorerName}.
+        </p>
         {transfers.status === 'loading' ? (
-          <p className="muted">Loading history…</p>
+          <p className="muted">Loading transactions…</p>
         ) : transfers.status === 'error' ? (
           <StatusBanner tone="error">
             Explorer / RPC history failed: {transfers.error}
@@ -137,7 +142,7 @@ function AddressDetail({
               <StatusBanner tone="warn">
                 Recent activity only — explorer API unavailable
                 {transfers.data.error ? ` (${transfers.data.error})` : ''};
-                showing eth_getLogs fallback.
+                showing eth_getLogs fallback (token transfers only).
               </StatusBanner>
             ) : null}
             <TransferTable
