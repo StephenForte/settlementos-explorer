@@ -12,6 +12,7 @@ import {
   resolveMcpPublicUrl,
   type McpAuthConfig,
 } from './mcp/auth.ts'
+import { corsOriginDelegate } from './mcp/cors.ts'
 import { mountMcpRoutes } from './mcp/http.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -22,6 +23,7 @@ export type CreateAppDeps = {
   mcpOauthClientId?: string
   mcpOauthClientSecret?: string
   mcpPublicUrl?: string
+  mcpOauthAllowDcr?: boolean | string
   staticDir?: string
   warn?: (message: string) => void
 }
@@ -51,6 +53,10 @@ export function createApp(deps: CreateAppDeps = {}): AppWithAuth {
       deps.mcpPublicUrl !== undefined
         ? deps.mcpPublicUrl
         : resolveMcpPublicUrl(),
+    oauthAllowDcr:
+      deps.mcpOauthAllowDcr !== undefined
+        ? deps.mcpOauthAllowDcr
+        : process.env.MCP_OAUTH_ALLOW_DCR,
     warn,
   })
 
@@ -58,13 +64,20 @@ export function createApp(deps: CreateAppDeps = {}): AppWithAuth {
   app.set('trust proxy', 1)
   app.locals.mcpAuth = mcpAuth
 
-  // Claude connector UI / browser OAuth helpers may probe from claude.ai.
+  // Claude / Cursor browser OAuth helpers may probe cross-origin; keep allowlisted.
   app.use(
     cors({
-      origin: true,
+      origin: corsOriginDelegate,
       exposedHeaders: ['WWW-Authenticate', 'Mcp-Session-Id'],
     }),
   )
+
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+    res.setHeader('X-Frame-Options', 'DENY')
+    next()
+  })
 
   const defaultJson = express.json({ limit: '32kb' })
   app.use((req, res, next) => {
@@ -82,6 +95,7 @@ export function createApp(deps: CreateAppDeps = {}): AppWithAuth {
       service: 'settlementos-explorer',
       mcpConfigured: mcpAuth.configured,
       mcpOauthConfigured: mcpAuth.oauthConfigured,
+      mcpOauthDcrEnabled: mcpAuth.oauthAllowDcr,
       etherscanKeyConfigured: Boolean(
         process.env.VITE_ETHERSCAN_API_KEY?.trim() ||
           process.env.ETHERSCAN_API_KEY?.trim(),
@@ -151,7 +165,9 @@ export function logMcpBootStatus(warn = console.warn): void {
     console.log('MCP: /mcp enabled (Bearer MCP_API_KEY)')
     if (mcpBootAuth.oauthConfigured) {
       console.log(
-        `MCP OAuth: enabled (issuer ${mcpBootAuth.publicUrl})`,
+        `MCP OAuth: enabled (issuer ${mcpBootAuth.publicUrl}${
+          mcpBootAuth.oauthAllowDcr ? ', DCR on' : ', static clients only'
+        })`,
       )
     } else if (mcpBootAuth.oauthReason) {
       warn(

@@ -23,6 +23,25 @@ describe('resolveMcpAuth', () => {
     const auth = resolveMcpAuth({ apiKey: key, warn: () => {} })
     expect(auth.configured).toBe(true)
     expect(auth.oauthConfigured).toBe(false)
+    expect(auth.oauthAllowDcr).toBe(false)
+  })
+
+  it('enables DCR only when explicitly requested and OAuth is configured', () => {
+    const key = 'a'.repeat(MCP_API_KEY_MIN_LENGTH)
+    const base = {
+      apiKey: key,
+      oauthClientId: '11111111-1111-4111-8111-111111111111',
+      oauthClientSecret: 'oauth-client-secret-16+',
+      publicUrl: 'https://example.com',
+      warn: () => {},
+    }
+    expect(resolveMcpAuth(base).oauthAllowDcr).toBe(false)
+    expect(resolveMcpAuth({ ...base, oauthAllowDcr: true }).oauthAllowDcr).toBe(
+      true,
+    )
+    expect(
+      resolveMcpAuth({ ...base, oauthAllowDcr: 'true' }).oauthAllowDcr,
+    ).toBe(true)
   })
 
   it('enables OAuth only with client credentials + https/localhost public URL', () => {

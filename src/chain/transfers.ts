@@ -1,6 +1,7 @@
 import { decodeEventLog, type Address, type Hex, type Log } from 'viem'
 import { erc20Abi, paymentSettlementEventsAbi } from '../config/abis'
 import {
+  getEscrowAddress,
   getTokens,
   labelForAddress,
   lookupAddress,
@@ -76,7 +77,6 @@ export interface TransfersResult {
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
 const LOG_WINDOW_BLOCKS = 50_000n
 const LOG_CHUNK = 2_000n
-const ESCROW_ADDRESS = '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
 
 interface EtherscanTokentxRow {
   hash: string
@@ -423,7 +423,9 @@ async function fetchEscrowEvents(
   networkId: NetworkId,
   address: string,
 ): Promise<EscrowLifecycleEvent[]> {
-  const settlement = ESCROW_ADDRESS as Address
+  const escrowAddress = getEscrowAddress(networkId)
+  if (!escrowAddress) return []
+  const settlement = escrowAddress as Address
   const isEscrow =
     lookupAddress(networkId, address)?.role === 'escrow-contract'
   const client = getPublicClient(networkId)

@@ -26,4 +26,21 @@ describe('cache', () => {
     await expect(cached('sum', fn)).resolves.toBe(42)
     expect(fn).toHaveBeenCalledTimes(1)
   })
+
+  it('cached() deduplicates concurrent in-flight requests', async () => {
+    let resolveFn!: (value: number) => void
+    const fn = vi.fn(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveFn = resolve
+        }),
+    )
+    const a = cached('inflight', fn)
+    const b = cached('inflight', fn)
+    expect(fn).toHaveBeenCalledTimes(1)
+    resolveFn(7)
+    await expect(a).resolves.toBe(7)
+    await expect(b).resolves.toBe(7)
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
 })

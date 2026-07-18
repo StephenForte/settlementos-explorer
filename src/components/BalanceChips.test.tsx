@@ -28,9 +28,10 @@ const balances: AddressBalances = {
 }
 
 describe('BalanceChips', () => {
-  it('shows loading copy when balances are missing', () => {
+  it('shows skeleton chips when balances are missing', () => {
     render(<BalanceChips balances={undefined} />)
-    expect(screen.getByText(/Loading balances/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Loading balances/i)).toBeInTheDocument()
+    expect(document.querySelectorAll('.chip-skeleton')).toHaveLength(3)
   })
 
   it('renders ok and unavailable chips', () => {

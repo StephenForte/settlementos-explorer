@@ -24,6 +24,7 @@ import {
   type McpAuthConfig,
 } from './auth.ts'
 import { MCP_OAUTH_SCOPES } from './oauth-provider.ts'
+import { createRateLimiter } from './rate-limit.ts'
 import { createExplorerMcpServer } from './server.ts'
 
 export function mountMcpRoutes(
@@ -39,6 +40,10 @@ export function mountMcpRoutes(
     opts.oauthProvider !== undefined
       ? opts.oauthProvider
       : buildMcpOAuthProvider(mcpAuth)
+  const oauthRateLimit = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+  })
 
   let auth: RequestHandler
 
@@ -55,6 +60,7 @@ export function mountMcpRoutes(
       scopesSupported: MCP_OAUTH_SCOPES,
     })
 
+    app.use(['/authorize', '/token', '/register', '/revoke'], oauthRateLimit)
     app.use(
       mcpAuthRouter({
         provider: oauthProvider,
@@ -137,7 +143,12 @@ export function mountMcpRoutes(
     }
   }
 
-  app.post('/mcp', auth, mcpJson, (req, res) => {
+  const mcpRateLimit = createRateLimiter({
+    windowMs: 60_000,
+    max: 120,
+  })
+
+  app.post('/mcp', mcpRateLimit, auth, mcpJson, (req, res) => {
     void handleMcpPost(req, res)
   })
 

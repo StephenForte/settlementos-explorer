@@ -94,12 +94,14 @@ Example `.cursor/mcp.json`:
 ### Claude.ai / Cursor OAuth
 
 1. Set `MCP_API_KEY`, `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET` (≥16), and `MCP_PUBLIC_URL` (origin only, no `/mcp`).
-2. Health should show `mcpConfigured: true` and `mcpOauthConfigured: true`.
-3. **Claude.ai (important):** Add custom connector → URL `https://<service>/mcp` → open **Advanced** and paste the **same** `MCP_OAUTH_CLIENT_ID` / `MCP_OAUTH_CLIENT_SECRET` from Render. Do **not** leave Advanced empty — Claude’s automatic DCR path is unreliable for custom connectors; static credentials match the MQ9 setup that works.
+2. Health should show `mcpConfigured: true` and `mcpOauthConfigured: true` (`mcpOauthDcrEnabled` is `false` by default).
+3. **Claude.ai (important):** Add custom connector → URL `https://<service>/mcp` → open **Advanced** and paste the **same** `MCP_OAUTH_CLIENT_ID` / `MCP_OAUTH_CLIENT_SECRET` from Render. Do **not** leave Advanced empty — use static credentials (recommended).
 4. Click **Connect** — browser should briefly hit `/authorize` and redirect back to Claude.
 5. Cursor: Bearer `MCP_API_KEY`, or OAuth with the same static client credentials.
 
-OAuth discovery: `/.well-known/oauth-authorization-server` (includes `/register`), `/.well-known/oauth-protected-resource/mcp`, `/authorize`, `/token`.
+OAuth discovery: `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource/mcp`, `/authorize`, `/token`.
+
+**Dynamic Client Registration** (`/register`) is **disabled by default**. Open DCR + auto-approve would let anyone mint MCP tokens without your static secret. Only set `MCP_OAUTH_ALLOW_DCR=true` if a client truly requires DCR; registrations are still limited to Claude/Cursor HTTPS redirect URIs (no localhost DCR).
 
 ## Deploy
 

@@ -6,6 +6,7 @@ interface CacheEntry<T> {
 const DEFAULT_TTL_MS = 30_000
 
 const store = new Map<string, CacheEntry<unknown>>()
+const inflight = new Map<string, Promise<unknown>>()
 
 export function cacheGet<T>(key: string): T | undefined {
   const entry = store.get(key)
@@ -23,6 +24,7 @@ export function cacheSet<T>(key: string, value: T, ttlMs = DEFAULT_TTL_MS): void
 
 export function cacheClear(): void {
   store.clear()
+  inflight.clear()
 }
 
 export async function cached<T>(
@@ -32,7 +34,20 @@ export async function cached<T>(
 ): Promise<T> {
   const hit = cacheGet<T>(key)
   if (hit !== undefined) return hit
-  const value = await fn()
-  cacheSet(key, value, ttlMs)
-  return value
+
+  const pending = inflight.get(key)
+  if (pending) return pending as Promise<T>
+
+  const promise = (async () => {
+    try {
+      const value = await fn()
+      cacheSet(key, value, ttlMs)
+      return value
+    } finally {
+      inflight.delete(key)
+    }
+  })()
+
+  inflight.set(key, promise)
+  return promise
 }

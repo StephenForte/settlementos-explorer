@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   ENTITIES,
+  PAYMENT_SETTLEMENT_ADDRESS,
+  filterAddressEntries,
   getAddressesForNetwork,
   getEntity,
   getEntityWallets,
+  getEscrowAddress,
   getTokens,
   isEntityId,
   labelForAddress,
@@ -107,6 +110,29 @@ describe('tokens and entities', () => {
     ).toBe('PaymentSettlement')
     expect(truncateAddress('0x5128889F20Ec13e0Be38b2BeBC568594159B652d')).toMatch(
       /^0x5128…/,
+    )
+  })
+
+  it('filters directory entries by label, role, or address fragment', () => {
+    const base = getAddressesForNetwork('base-sepolia')
+    expect(filterAddressEntries(base, 'acme').every((e) =>
+      e.label.toLowerCase().includes('acme'),
+    )).toBe(true)
+    expect(filterAddressEntries(base, 'operator')).toHaveLength(1)
+    expect(
+      filterAddressEntries(base, PAYMENT_SETTLEMENT_ADDRESS.slice(2, 10)).some(
+        (e) => e.role === 'escrow-contract',
+      ),
+    ).toBe(true)
+    expect(filterAddressEntries(base, '   ')).toHaveLength(base.length)
+  })
+
+  it('resolves escrow address from the address book', () => {
+    expect(getEscrowAddress('base-sepolia')?.toLowerCase()).toBe(
+      PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
+    )
+    expect(getEscrowAddress('polygon-amoy')?.toLowerCase()).toBe(
+      PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
     )
   })
 })

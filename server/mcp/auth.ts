@@ -13,6 +13,8 @@ export const MCP_OAUTH_SECRET_MIN_LENGTH = 16
 export type McpAuthConfig = {
   configured: boolean
   oauthConfigured: boolean
+  /** Open Dynamic Client Registration (off by default). */
+  oauthAllowDcr: boolean
   apiKey: string
   oauthClientId: string
   oauthClientSecret: string
@@ -21,12 +23,19 @@ export type McpAuthConfig = {
   oauthReason: string | null
 }
 
+function parseTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false
+  const normalized = value.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes'
+}
+
 export function resolveMcpAuth(
   opts: {
     apiKey?: string
     oauthClientId?: string
     oauthClientSecret?: string
     publicUrl?: string
+    oauthAllowDcr?: boolean | string
     warn?: (message: string) => void
   } = {},
 ): McpAuthConfig {
@@ -42,11 +51,20 @@ export function resolveMcpAuth(
     typeof opts.publicUrl === 'string'
       ? normalizeMcpPublicUrl(opts.publicUrl)
       : ''
+  const oauthAllowDcr =
+    typeof opts.oauthAllowDcr === 'boolean'
+      ? opts.oauthAllowDcr
+      : parseTruthyEnv(
+          typeof opts.oauthAllowDcr === 'string'
+            ? opts.oauthAllowDcr
+            : undefined,
+        )
 
   if (!apiKey) {
     return {
       configured: false,
       oauthConfigured: false,
+      oauthAllowDcr: false,
       apiKey: '',
       oauthClientId: '',
       oauthClientSecret: '',
@@ -63,6 +81,7 @@ export function resolveMcpAuth(
     return {
       configured: false,
       oauthConfigured: false,
+      oauthAllowDcr: false,
       apiKey: '',
       oauthClientId: '',
       oauthClientSecret: '',
@@ -112,6 +131,7 @@ export function resolveMcpAuth(
   return {
     configured: true,
     oauthConfigured,
+    oauthAllowDcr: oauthConfigured ? oauthAllowDcr : false,
     apiKey,
     oauthClientId: oauthConfigured ? oauthClientId : '',
     oauthClientSecret: oauthConfigured ? oauthClientSecret : '',
@@ -197,6 +217,7 @@ export function buildMcpOAuthProvider(
   auth: Pick<
     McpAuthConfig,
     | 'oauthConfigured'
+    | 'oauthAllowDcr'
     | 'oauthClientId'
     | 'oauthClientSecret'
     | 'publicUrl'
@@ -207,6 +228,7 @@ export function buildMcpOAuthProvider(
   return createMcpOAuthProvider({
     clientId: auth.oauthClientId,
     clientSecret: auth.oauthClientSecret,
+    allowDynamicRegistration: auth.oauthAllowDcr,
     validateResource: (resource) => {
       if (!resource) return true
       return (

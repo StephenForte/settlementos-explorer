@@ -2,7 +2,13 @@ import type { AddressBalances } from '../chain/balances'
 
 export function BalanceChips({ balances }: { balances: AddressBalances | null | undefined }) {
   if (!balances) {
-    return <span className="muted">Loading balances…</span>
+    return (
+      <div className="balance-chips" aria-busy="true" aria-label="Loading balances">
+        <span className="chip chip-skeleton" />
+        <span className="chip chip-skeleton" />
+        <span className="chip chip-skeleton" />
+      </div>
+    )
   }
 
   return (

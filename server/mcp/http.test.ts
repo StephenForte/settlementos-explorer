@@ -140,7 +140,7 @@ describe('/mcp OAuth', () => {
     return { verifier, challenge }
   }
 
-  it('advertises metadata and completes code+PKCE exchange', async () => {
+  it('advertises metadata and completes static client code+PKCE exchange', async () => {
     const port = await reservePort()
     const publicUrl = `http://127.0.0.1:${port}`
     const app = createApp({
@@ -154,9 +154,14 @@ describe('/mcp OAuth', () => {
 
     const health = (await fetch(`${baseUrl}/api/health`).then((r) =>
       r.json(),
-    )) as { mcpConfigured: boolean; mcpOauthConfigured: boolean }
+    )) as {
+      mcpConfigured: boolean
+      mcpOauthConfigured: boolean
+      mcpOauthDcrEnabled: boolean
+    }
     expect(health.mcpConfigured).toBe(true)
     expect(health.mcpOauthConfigured).toBe(true)
+    expect(health.mcpOauthDcrEnabled).toBe(false)
 
     const asMeta = (await fetch(
       `${baseUrl}/.well-known/oauth-authorization-server`,
@@ -164,13 +169,12 @@ describe('/mcp OAuth', () => {
       issuer: string
       authorization_endpoint: string
       token_endpoint: string
+      registration_endpoint?: string
     }
     expect(asMeta.issuer).toBe(`${baseUrl}/`)
     expect(asMeta.authorization_endpoint).toBeTruthy()
     expect(asMeta.token_endpoint).toBeTruthy()
-    expect(
-      (asMeta as { registration_endpoint?: string }).registration_endpoint,
-    ).toBe(`${baseUrl}/register`)
+    expect(asMeta.registration_endpoint).toBeUndefined()
 
     const pathAs = (await fetch(
       `${baseUrl}/.well-known/oauth-authorization-server/mcp`,
@@ -183,7 +187,7 @@ describe('/mcp OAuth', () => {
     )
     expect(rootPrm.status).toBe(200)
 
-    const dcr = await fetch(`${baseUrl}/register`, {
+    const dcrDisabled = await fetch(`${baseUrl}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -194,42 +198,7 @@ describe('/mcp OAuth', () => {
         client_name: 'claude-dcr-test',
       }),
     })
-    expect(dcr.status).toBe(201)
-    const registered = (await dcr.json()) as { client_id: string }
-    expect(registered.client_id).toBeTruthy()
-
-    const dcrPkce = makePkce()
-    const dcrRedirect = 'https://claude.ai/api/mcp/auth_callback'
-    const dcrAuthUrl = new URL('/authorize', baseUrl)
-    dcrAuthUrl.searchParams.set('response_type', 'code')
-    dcrAuthUrl.searchParams.set('client_id', registered.client_id)
-    dcrAuthUrl.searchParams.set('redirect_uri', dcrRedirect)
-    dcrAuthUrl.searchParams.set('code_challenge', dcrPkce.challenge)
-    dcrAuthUrl.searchParams.set('code_challenge_method', 'S256')
-    dcrAuthUrl.searchParams.set('state', 'dcr-state')
-    dcrAuthUrl.searchParams.set('resource', `${baseUrl}/mcp`)
-    const dcrAuthRes = await fetch(dcrAuthUrl, { redirect: 'manual' })
-    expect(dcrAuthRes.status).toBe(302)
-    const dcrLocation = dcrAuthRes.headers.get('location')
-    expect(dcrLocation).toBeTruthy()
-    const dcrCode = new URL(dcrLocation!).searchParams.get('code')
-    expect(dcrCode).toBeTruthy()
-
-    const dcrTokenRes = await fetch(`${baseUrl}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: dcrCode!,
-        code_verifier: dcrPkce.verifier,
-        redirect_uri: dcrRedirect,
-        client_id: registered.client_id,
-        resource: `${baseUrl}/mcp`,
-      }),
-    })
-    expect(dcrTokenRes.status).toBe(200)
-    const dcrTokens = (await dcrTokenRes.json()) as { access_token: string }
-    expect(dcrTokens.access_token).toBeTruthy()
+    expect(dcrDisabled.status).toBeGreaterThanOrEqual(400)
 
     const prm = (await fetch(
       `${baseUrl}/.well-known/oauth-protected-resource/mcp`,
@@ -316,6 +285,86 @@ describe('/mcp OAuth', () => {
     } finally {
       await client.close()
     }
+  })
+
+  it('supports allowlisted DCR when MCP_OAUTH_ALLOW_DCR is enabled', async () => {
+    const port = await reservePort()
+    const publicUrl = `http://127.0.0.1:${port}`
+    const app = createApp({
+      mcpApiKey: MCP_KEY,
+      mcpOauthClientId: OAUTH_CLIENT_ID,
+      mcpOauthClientSecret: OAUTH_CLIENT_SECRET,
+      mcpPublicUrl: publicUrl,
+      mcpOauthAllowDcr: true,
+      warn: () => {},
+    })
+    const { baseUrl } = await listen(app, port)
+
+    const asMeta = (await fetch(
+      `${baseUrl}/.well-known/oauth-authorization-server`,
+    ).then((r) => r.json())) as { registration_endpoint?: string }
+    expect(asMeta.registration_endpoint).toBe(`${baseUrl}/register`)
+
+    const dcr = await fetch(`${baseUrl}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        redirect_uris: ['https://claude.ai/api/mcp/auth_callback'],
+        token_endpoint_auth_method: 'none',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        client_name: 'claude-dcr-test',
+      }),
+    })
+    expect(dcr.status).toBe(201)
+    const registered = (await dcr.json()) as { client_id: string }
+    expect(registered.client_id).toBeTruthy()
+
+    const rejected = await fetch(`${baseUrl}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        redirect_uris: ['http://localhost/callback'],
+        token_endpoint_auth_method: 'none',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        client_name: 'evil-localhost-dcr',
+      }),
+    })
+    expect(rejected.status).toBeGreaterThanOrEqual(400)
+
+    const dcrPkce = makePkce()
+    const dcrRedirect = 'https://claude.ai/api/mcp/auth_callback'
+    const dcrAuthUrl = new URL('/authorize', baseUrl)
+    dcrAuthUrl.searchParams.set('response_type', 'code')
+    dcrAuthUrl.searchParams.set('client_id', registered.client_id)
+    dcrAuthUrl.searchParams.set('redirect_uri', dcrRedirect)
+    dcrAuthUrl.searchParams.set('code_challenge', dcrPkce.challenge)
+    dcrAuthUrl.searchParams.set('code_challenge_method', 'S256')
+    dcrAuthUrl.searchParams.set('state', 'dcr-state')
+    dcrAuthUrl.searchParams.set('resource', `${baseUrl}/mcp`)
+    const dcrAuthRes = await fetch(dcrAuthUrl, { redirect: 'manual' })
+    expect(dcrAuthRes.status).toBe(302)
+    const dcrLocation = dcrAuthRes.headers.get('location')
+    expect(dcrLocation).toBeTruthy()
+    const dcrCode = new URL(dcrLocation!).searchParams.get('code')
+    expect(dcrCode).toBeTruthy()
+
+    const dcrTokenRes = await fetch(`${baseUrl}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: dcrCode!,
+        code_verifier: dcrPkce.verifier,
+        redirect_uri: dcrRedirect,
+        client_id: registered.client_id,
+        resource: `${baseUrl}/mcp`,
+      }),
+    })
+    expect(dcrTokenRes.status).toBe(200)
+    const dcrTokens = (await dcrTokenRes.json()) as { access_token: string }
+    expect(dcrTokens.access_token).toBeTruthy()
   })
 })
 

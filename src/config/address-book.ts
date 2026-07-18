@@ -64,7 +64,9 @@ const SHARED_TOKENS = {
   },
 } as const
 
-const PAYMENT_SETTLEMENT = '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
+/** Shared PaymentSettlement address on both testnets. */
+export const PAYMENT_SETTLEMENT_ADDRESS =
+  '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
 const OPERATOR = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
 
 function tokenEntries(networkId: NetworkId): AddressEntry[] {
@@ -84,7 +86,7 @@ function networkEntries(
 ): AddressEntry[] {
   return [
     {
-      address: PAYMENT_SETTLEMENT,
+      address: PAYMENT_SETTLEMENT_ADDRESS,
       role: 'escrow-contract',
       label: 'PaymentSettlement',
       networkId,
@@ -158,6 +160,35 @@ export function getTokens(networkId: NetworkId): TokenMeta[] {
 
 export function getAddressesForNetwork(networkId: NetworkId): AddressEntry[] {
   return ADDRESS_BOOK.filter((e) => e.networkId === networkId)
+}
+
+/** Case-insensitive label / address / role / entity filter for the directory. */
+export function filterAddressEntries(
+  entries: AddressEntry[],
+  query: string,
+): AddressEntry[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return entries
+  return entries.filter((entry) => {
+    const haystack = [
+      entry.label,
+      entry.address,
+      entry.role,
+      roleLabel(entry.role),
+      roleGroup(entry.role),
+      entry.entityId ?? '',
+      entry.token?.symbol ?? '',
+    ]
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(q)
+  })
+}
+
+export function getEscrowAddress(networkId: NetworkId): string | undefined {
+  return ADDRESS_BOOK.find(
+    (e) => e.networkId === networkId && e.role === 'escrow-contract',
+  )?.address
 }
 
 export function lookupAddress(
