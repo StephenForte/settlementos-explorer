@@ -75,6 +75,19 @@ export function mountMcpRoutes(
     app.get('/mcp/.well-known/openid-configuration', serveAsMetadata)
     app.get('/.well-known/openid-configuration', serveAsMetadata)
 
+    const protectedResourceMetadata = {
+      resource: mcpServerUrl.href,
+      authorization_servers: [oauthMetadata.issuer],
+      scopes_supported: MCP_OAUTH_SCOPES,
+      resource_name: 'SettlementOS Explorer',
+    }
+    const servePrm: RequestHandler = (_req, res) => {
+      res.status(200).json(protectedResourceMetadata)
+    }
+    // Root PRM (some clients omit the /mcp path suffix).
+    app.get('/.well-known/oauth-protected-resource', servePrm)
+    app.get('/mcp/.well-known/oauth-protected-resource', servePrm)
+
     const verifier = createMcpTokenVerifier({
       apiKey: mcpAuth.apiKey,
       oauthProvider,

@@ -1,7 +1,8 @@
 /**
  * In-memory OAuth 2.1 provider for Claude/Cursor MCP connectors.
- * Pre-registers a confidential client (MCP_OAUTH_CLIENT_ID / SECRET).
- * Auto-approves authorize for the known client (PKCE + client_secret gate the token).
+ * Pre-registers a confidential client (MCP_OAUTH_CLIENT_ID / SECRET) and
+ * supports Dynamic Client Registration (Claude's preferred path).
+ * Auto-approves authorize (PKCE + client_secret / public client gate the token).
  */
 
 import { randomUUID } from 'node:crypto'
@@ -13,11 +14,16 @@ import type {
   AuthorizationParams,
   OAuthServerProvider,
 } from '@modelcontextprotocol/sdk/server/auth/provider.js'
+import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js'
 import type { Response } from 'express'
 
 /** Claude.ai / Desktop / Cowork / mobile callback (fixed by Anthropic). */
 export const CLAUDE_MCP_REDIRECT_URI =
   'https://claude.ai/api/mcp/auth_callback'
+
+/** Alternate Claude host some surfaces use. */
+export const CLAUDE_COM_MCP_REDIRECT_URI =
+  'https://claude.com/api/mcp/auth_callback'
 
 /** Claude Code loopback templates (port-agnostic match in SDK). */
 export const CLAUDE_CODE_REDIRECT_URIS = [
@@ -40,14 +46,17 @@ const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000
 export function createStaticClientsStore(opts: {
   clientId: string
   clientSecret: string
-}) {
-  const client: OAuthClientInformationFull = {
+}): OAuthRegisteredClientsStore {
+  const clients = new Map<string, OAuthClientInformationFull>()
+
+  const staticClient: OAuthClientInformationFull = {
     client_id: opts.clientId,
     client_secret: opts.clientSecret,
     client_id_issued_at: Math.floor(Date.now() / 1000),
     client_secret_expires_at: 0,
     redirect_uris: [
       CLAUDE_MCP_REDIRECT_URI,
+      CLAUDE_COM_MCP_REDIRECT_URI,
       ...CLAUDE_CODE_REDIRECT_URIS,
       ...CURSOR_MCP_REDIRECT_URIS,
     ],
@@ -56,11 +65,20 @@ export function createStaticClientsStore(opts: {
     token_endpoint_auth_method: 'client_secret_post',
     client_name: 'SettlementOS Explorer MCP',
   }
+  clients.set(staticClient.client_id, staticClient)
 
   return {
     async getClient(clientId: string) {
-      if (clientId === client.client_id) return { ...client }
-      return undefined
+      const client = clients.get(clientId)
+      return client ? { ...client } : undefined
+    },
+    async registerClient(client) {
+      const full = client as OAuthClientInformationFull
+      if (!full.client_id) {
+        throw new Error('client_id required for registration')
+      }
+      clients.set(full.client_id, full)
+      return { ...full }
     },
   }
 }
@@ -102,7 +120,8 @@ export function createMcpOAuthProvider(opts: {
       }
       const targetUrl = new URL(params.redirectUri)
       targetUrl.search = searchParams.toString()
-      res.redirect(targetUrl.toString())
+      // Claude.ai rejects 307; OAuth 2.1 expects 302/303.
+      res.redirect(302, targetUrl.toString())
     },
 
     async challengeForAuthorizationCode(client, authorizationCode) {
