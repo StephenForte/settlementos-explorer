@@ -19,6 +19,8 @@ coverage
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+# Local MCP connector config may include a Bearer token
+.cursor/mcp.json
 .idea
 .DS_Store
 *.suo
