@@ -169,6 +169,12 @@ describe('/mcp OAuth', () => {
     expect(asMeta.authorization_endpoint).toBeTruthy()
     expect(asMeta.token_endpoint).toBeTruthy()
 
+    const pathAs = (await fetch(
+      `${baseUrl}/.well-known/oauth-authorization-server/mcp`,
+    ).then((r) => r.json())) as { issuer: string }
+    expect(pathAs.issuer).toBe(`${baseUrl}/`)
+    expect(pathAs.issuer.endsWith('/mcp')).toBe(false)
+
     const prm = (await fetch(
       `${baseUrl}/.well-known/oauth-protected-resource/mcp`,
     ).then((r) => r.json())) as {

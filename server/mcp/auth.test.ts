@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bearerMatches,
   MCP_API_KEY_MIN_LENGTH,
+  normalizeMcpPublicUrl,
   resolveMcpAuth,
   resolveMcpPublicUrl,
 } from './auth.ts'
@@ -58,6 +59,18 @@ describe('bearerMatches', () => {
   })
 })
 
+describe('normalizeMcpPublicUrl', () => {
+  it('strips trailing slash and a mistaken /mcp path', () => {
+    expect(normalizeMcpPublicUrl('https://a.example/')).toBe('https://a.example')
+    expect(normalizeMcpPublicUrl('https://a.example/mcp')).toBe(
+      'https://a.example',
+    )
+    expect(normalizeMcpPublicUrl('https://a.example/mcp/')).toBe(
+      'https://a.example',
+    )
+  })
+})
+
 describe('resolveMcpPublicUrl', () => {
   it('prefers MCP_PUBLIC_URL over RENDER_EXTERNAL_URL', () => {
     expect(
@@ -71,5 +84,13 @@ describe('resolveMcpPublicUrl', () => {
         RENDER_EXTERNAL_URL: 'https://b.example/',
       }),
     ).toBe('https://b.example')
+  })
+
+  it('normalizes MCP_PUBLIC_URL that includes /mcp', () => {
+    expect(
+      resolveMcpPublicUrl({
+        MCP_PUBLIC_URL: 'https://settlementos-explorer-ihgo.onrender.com/mcp',
+      }),
+    ).toBe('https://settlementos-explorer-ihgo.onrender.com')
   })
 })

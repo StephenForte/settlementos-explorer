@@ -5,6 +5,7 @@
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
 import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js'
 import {
+  createOAuthMetadata,
   getOAuthProtectedResourceMetadataUrl,
   mcpAuthRouter,
 } from '@modelcontextprotocol/sdk/server/auth/router.js'
@@ -44,8 +45,15 @@ export function mountMcpRoutes(
   if (!mcpAuth.configured) {
     auth = requireMcpAuth(mcpAuth)
   } else if (mcpAuth.oauthConfigured && oauthProvider && mcpAuth.publicUrl) {
+    // Issuer = origin only. Resource = …/mcp (Claude connector URL).
     const issuerUrl = new URL(mcpAuth.publicUrl)
     const mcpServerUrl = new URL('/mcp', `${mcpAuth.publicUrl}/`)
+    const oauthMetadata = createOAuthMetadata({
+      provider: oauthProvider,
+      issuerUrl,
+      baseUrl: issuerUrl,
+      scopesSupported: MCP_OAUTH_SCOPES,
+    })
 
     app.use(
       mcpAuthRouter({
@@ -57,6 +65,15 @@ export function mountMcpRoutes(
         resourceName: 'SettlementOS Explorer',
       }),
     )
+
+    // Claude often probes path-based AS discovery from the `/mcp` resource URL.
+    const serveAsMetadata: RequestHandler = (_req, res) => {
+      res.status(200).json(oauthMetadata)
+    }
+    app.get('/.well-known/oauth-authorization-server/mcp', serveAsMetadata)
+    app.get('/mcp/.well-known/oauth-authorization-server', serveAsMetadata)
+    app.get('/mcp/.well-known/openid-configuration', serveAsMetadata)
+    app.get('/.well-known/openid-configuration', serveAsMetadata)
 
     const verifier = createMcpTokenVerifier({
       apiKey: mcpAuth.apiKey,

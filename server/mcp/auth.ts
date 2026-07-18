@@ -40,7 +40,7 @@ export function resolveMcpAuth(
       : ''
   const publicUrl =
     typeof opts.publicUrl === 'string'
-      ? opts.publicUrl.trim().replace(/\/$/, '')
+      ? normalizeMcpPublicUrl(opts.publicUrl)
       : ''
 
   if (!apiKey) {
@@ -121,6 +121,25 @@ export function resolveMcpAuth(
   }
 }
 
+/**
+ * Origin only — strip trailing slash and a mistaken `/mcp` path.
+ * Claude connectors use `…/mcp` as the resource URL; the OAuth issuer must not.
+ */
+export function normalizeMcpPublicUrl(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.pathname === '/mcp' || parsed.pathname === '/mcp/') {
+      parsed.pathname = '/'
+    }
+    // Drop any other path/query/hash so issuer stays a pure origin.
+    return parsed.origin
+  } catch {
+    return trimmed.replace(/\/$/, '').replace(/\/mcp$/i, '')
+  }
+}
+
 export function resolveMcpPublicUrl(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
 ): string {
@@ -129,7 +148,7 @@ export function resolveMcpPublicUrl(
     (typeof env.RENDER_EXTERNAL_URL === 'string' &&
       env.RENDER_EXTERNAL_URL.trim()) ||
     ''
-  return fromEnv.replace(/\/$/, '')
+  return normalizeMcpPublicUrl(fromEnv)
 }
 
 export function bearerMatches(
