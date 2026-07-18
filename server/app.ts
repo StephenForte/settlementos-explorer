@@ -4,6 +4,7 @@
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import cors from 'cors'
 import express, { type Express } from 'express'
 import {
   MCP_API_KEY_MIN_LENGTH,
@@ -56,6 +57,14 @@ export function createApp(deps: CreateAppDeps = {}): AppWithAuth {
   const app = express() as AppWithAuth
   app.set('trust proxy', 1)
   app.locals.mcpAuth = mcpAuth
+
+  // Claude connector UI / browser OAuth helpers may probe from claude.ai.
+  app.use(
+    cors({
+      origin: true,
+      exposedHeaders: ['WWW-Authenticate', 'Mcp-Session-Id'],
+    }),
+  )
 
   const defaultJson = express.json({ limit: '32kb' })
   app.use((req, res, next) => {
