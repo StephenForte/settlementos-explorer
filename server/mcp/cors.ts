@@ -1,5 +1,6 @@
 /**
- * CORS allowlist for MCP / OAuth browser probes (Claude, Cursor, local dev).
+ * CORS allowlist for MCP / OAuth browser probes
+ * (Claude, ChatGPT, Cursor, local dev).
  * Server-to-server callers omit Origin and are unaffected.
  */
 
@@ -8,6 +9,9 @@ const ALLOWED_ORIGIN_HOSTS = new Set([
   'www.claude.ai',
   'claude.com',
   'www.claude.com',
+  'chatgpt.com',
+  'www.chatgpt.com',
+  'chat.openai.com',
   'cursor.com',
   'www.cursor.com',
 ])

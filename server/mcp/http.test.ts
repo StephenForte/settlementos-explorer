@@ -366,6 +366,55 @@ describe('/mcp OAuth', () => {
     const dcrTokens = (await dcrTokenRes.json()) as { access_token: string }
     expect(dcrTokens.access_token).toBeTruthy()
   })
+
+  it('accepts ChatGPT platform + per-connector redirect URIs', async () => {
+    const port = await reservePort()
+    const publicUrl = `http://127.0.0.1:${port}`
+    const app = createApp({
+      mcpApiKey: MCP_KEY,
+      mcpOauthClientId: OAUTH_CLIENT_ID,
+      mcpOauthClientSecret: OAUTH_CLIENT_SECRET,
+      mcpPublicUrl: publicUrl,
+      warn: () => {},
+    })
+    const { baseUrl } = await listen(app, port)
+
+    async function authorize(redirectUri: string) {
+      const { challenge } = makePkce()
+      const authUrl = new URL('/authorize', baseUrl)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', OAUTH_CLIENT_ID)
+      authUrl.searchParams.set('redirect_uri', redirectUri)
+      authUrl.searchParams.set('code_challenge', challenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+      authUrl.searchParams.set('state', 'chatgpt-state')
+      authUrl.searchParams.set('resource', `${baseUrl}/mcp`)
+      return fetch(authUrl, { redirect: 'manual' })
+    }
+
+    const platformUri =
+      'https://chatgpt.com/connector_platform_oauth_redirect'
+    const platformRes = await authorize(platformUri)
+    expect(platformRes.status).toBe(302)
+    const platformLoc = platformRes.headers.get('location')
+    expect(platformLoc).toBeTruthy()
+    expect(
+      new URL(platformLoc!).origin + new URL(platformLoc!).pathname,
+    ).toBe(platformUri)
+
+    const connectorUri =
+      'https://chatgpt.com/connector/oauth/cb_test_connector_1'
+    const connectorRes = await authorize(connectorUri)
+    expect(connectorRes.status).toBe(302)
+    const connectorLoc = connectorRes.headers.get('location')
+    expect(connectorLoc).toBeTruthy()
+    expect(
+      new URL(connectorLoc!).origin + new URL(connectorLoc!).pathname,
+    ).toBe(connectorUri)
+
+    const rejected = await authorize('https://evil.example/callback')
+    expect(rejected.status).toBe(400)
+  })
 })
 
 describe('/mcp tools', () => {

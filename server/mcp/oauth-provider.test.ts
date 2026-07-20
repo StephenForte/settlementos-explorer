@@ -1,17 +1,54 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AUTH_CODE_TTL_MS,
+  CHATGPT_MCP_REDIRECT_URIS,
   CLAUDE_MCP_REDIRECT_URI,
   createMcpOAuthProvider,
   createStaticClientsStore,
   isAllowedDcrRedirectUri,
+  isChatGptConnectorOauthRedirectUri,
 } from './oauth-provider.ts'
 
 describe('DCR redirect allowlist', () => {
-  it('allows Claude / Cursor HTTPS callbacks only', () => {
+  it('allows Claude / Cursor / ChatGPT HTTPS callbacks only', () => {
     expect(isAllowedDcrRedirectUri(CLAUDE_MCP_REDIRECT_URI)).toBe(true)
+    expect(isAllowedDcrRedirectUri(CHATGPT_MCP_REDIRECT_URIS[0]!)).toBe(true)
+    expect(
+      isAllowedDcrRedirectUri(
+        'https://chatgpt.com/connector/oauth/cb_abc123',
+      ),
+    ).toBe(true)
     expect(isAllowedDcrRedirectUri('http://localhost/callback')).toBe(false)
     expect(isAllowedDcrRedirectUri('https://evil.example/callback')).toBe(false)
+  })
+})
+
+describe('ChatGPT connector redirect URIs', () => {
+  it('accepts per-connector callbacks and rejects lookalikes', () => {
+    expect(
+      isChatGptConnectorOauthRedirectUri(
+        'https://chatgpt.com/connector/oauth/cb_abc123',
+      ),
+    ).toBe(true)
+    expect(
+      isChatGptConnectorOauthRedirectUri(CHATGPT_MCP_REDIRECT_URIS[0]!),
+    ).toBe(false)
+    expect(
+      isChatGptConnectorOauthRedirectUri('https://chatgpt.com/evil'),
+    ).toBe(false)
+  })
+
+  it('remembers per-connector callbacks on the static client', async () => {
+    const store = createStaticClientsStore({
+      clientId: 'static-id',
+      clientSecret: 'static-secret-16+',
+    })
+    const connectorUri =
+      'https://chatgpt.com/connector/oauth/cb_test_connector_1'
+    store.rememberAllowedRedirectUri?.(connectorUri)
+    const client = await store.getClient('static-id')
+    expect(client?.redirect_uris).toContain(connectorUri)
+    expect(client?.redirect_uris).toContain(CHATGPT_MCP_REDIRECT_URIS[0])
   })
 })
 

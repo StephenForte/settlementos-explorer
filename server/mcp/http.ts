@@ -61,6 +61,24 @@ export function mountMcpRoutes(
     })
 
     app.use(['/authorize', '/token', '/register', '/revoke'], oauthRateLimit)
+
+    // ChatGPT may send a per-app callback
+    // (https://chatgpt.com/connector/oauth/{id}). The SDK requires exact
+    // registration — remember allowed ChatGPT callbacks before /authorize runs.
+    app.use('/authorize', (req, _res, next) => {
+      const store = oauthProvider.clientsStore as {
+        rememberAllowedRedirectUri?: (uri: string | undefined) => void
+      }
+      if (typeof store.rememberAllowedRedirectUri === 'function') {
+        const redirectUri =
+          typeof req.query.redirect_uri === 'string'
+            ? req.query.redirect_uri
+            : undefined
+        store.rememberAllowedRedirectUri(redirectUri)
+      }
+      next()
+    })
+
     app.use(
       mcpAuthRouter({
         provider: oauthProvider,

@@ -91,7 +91,7 @@ Example `.cursor/mcp.json`:
 }
 ```
 
-### Claude.ai / Cursor OAuth
+### Claude.ai / ChatGPT / Cursor OAuth
 
 1. Set `MCP_API_KEY`, `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET` (≥16), and `MCP_PUBLIC_URL` (origin only, no `/mcp`).
 2. Health should show `mcpConfigured: true` and `mcpOauthConfigured: true` (`mcpOauthDcrEnabled` is `false` by default).
@@ -99,9 +99,22 @@ Example `.cursor/mcp.json`:
 4. Click **Connect** — browser should briefly hit `/authorize` and redirect back to Claude.
 5. Cursor: Bearer `MCP_API_KEY`, or OAuth with the same static client credentials.
 
+#### ChatGPT (Developer mode OAuth)
+
+ChatGPT uses Streamable HTTP + OAuth (not a Bearer header field like Cursor).
+
+1. Same env as Claude (`MCP_API_KEY`, `MCP_OAUTH_CLIENT_ID`, `MCP_OAUTH_CLIENT_SECRET`, `MCP_PUBLIC_URL`).
+2. In ChatGPT (Plus/Pro/Business/Enterprise/Edu, web):
+   - **Settings → Security and login → Developer mode** → on
+   - **Settings → Apps & Connectors** (or [chatgpt.com/apps](https://chatgpt.com/apps) / plugins) → create a developer-mode connector
+   - **URL:** `https://<service>/mcp`
+   - **OAuth Client ID / Secret:** paste the values above
+3. Save → authorize. The server allowlists ChatGPT callbacks (`connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/{callback_id}`).
+4. In a chat: enable the connector, then call tools (e.g. `list_addresses`, `summarize_explorer`).
+
 OAuth discovery: `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource/mcp`, `/authorize`, `/token`.
 
-**Dynamic Client Registration** (`/register`) is **disabled by default**. Open DCR + auto-approve would let anyone mint MCP tokens without your static secret. Only set `MCP_OAUTH_ALLOW_DCR=true` if a client truly requires DCR; registrations are still limited to Claude/Cursor HTTPS redirect URIs (no localhost DCR).
+**Dynamic Client Registration** (`/register`) is **disabled by default**. Open DCR + auto-approve would let anyone mint MCP tokens without your static secret. Only set `MCP_OAUTH_ALLOW_DCR=true` if a client truly requires DCR; registrations are still limited to Claude/ChatGPT/Cursor HTTPS redirect URIs (no localhost DCR).
 
 ## Deploy
 
@@ -115,7 +128,7 @@ Preferred host: **Render** via the Blueprint in `render.yaml` (Node web service 
 4. When prompted, set:
    - optional `VITE_ETHERSCAN_API_KEY`
    - optional `MCP_API_KEY` (enables `/mcp`)
-   - optional `MCP_OAUTH_*` + `MCP_PUBLIC_URL` for Claude/Cursor OAuth
+   - optional `MCP_OAUTH_*` + `MCP_PUBLIC_URL` for Claude/ChatGPT/Cursor OAuth
 5. After deploy, open the `*.onrender.com` URL and check `/api/health`
 
 SPA deep links are served by Express fallback to `index.html`. Auto-deploys on every push to `main`.

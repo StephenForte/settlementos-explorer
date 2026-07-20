@@ -1,5 +1,5 @@
 /**
- * In-memory OAuth 2.1 provider for Claude/Cursor MCP connectors.
+ * In-memory OAuth 2.1 provider for Claude / ChatGPT / Cursor MCP connectors.
  * Pre-registers a confidential client (MCP_OAUTH_CLIENT_ID / SECRET).
  * Dynamic Client Registration is off by default; when enabled, only
  * allowlisted HTTPS redirect URIs are accepted (no open localhost DCR).
@@ -39,11 +39,31 @@ export const CURSOR_MCP_REDIRECT_URIS = [
   'https://www.cursor.com/agents/mcp/oauth/callback',
 ]
 
+/**
+ * ChatGPT developer-mode / Apps connector callbacks (OpenAI).
+ * Legacy platform URI plus chat.openai.com alias; per-app
+ * `https://chatgpt.com/connector/oauth/{callback_id}` is remembered at authorize time.
+ */
+export const CHATGPT_MCP_REDIRECT_URIS = [
+  'https://chatgpt.com/connector_platform_oauth_redirect',
+  'https://chat.openai.com/connector_platform_oauth_redirect',
+]
+
+/** Fixed redirect URIs registered on the static confidential client. */
+export const MCP_OAUTH_FIXED_REDIRECT_URIS = [
+  CLAUDE_MCP_REDIRECT_URI,
+  CLAUDE_COM_MCP_REDIRECT_URI,
+  ...CLAUDE_CODE_REDIRECT_URIS,
+  ...CURSOR_MCP_REDIRECT_URIS,
+  ...CHATGPT_MCP_REDIRECT_URIS,
+]
+
 /** Redirect URIs allowed for Dynamic Client Registration (HTTPS / cursor only). */
 export const DCR_REDIRECT_URI_ALLOWLIST = [
   CLAUDE_MCP_REDIRECT_URI,
   CLAUDE_COM_MCP_REDIRECT_URI,
   'https://www.cursor.com/agents/mcp/oauth/callback',
+  ...CHATGPT_MCP_REDIRECT_URIS,
 ] as const
 
 export const MCP_OAUTH_SCOPES = ['mcp:tools']
@@ -53,40 +73,87 @@ const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000
 /** Authorization codes are single-use and short-lived. */
 export const AUTH_CODE_TTL_MS = 5 * 60 * 1000
 
+const CHATGPT_CONNECTOR_OAUTH_HOSTS = new Set([
+  'chatgpt.com',
+  'chat.openai.com',
+])
+
+/**
+ * True for ChatGPT per-connector OAuth callbacks:
+ * `https://chatgpt.com/connector/oauth/{callback_id}` (single path segment).
+ */
+export function isChatGptConnectorOauthRedirectUri(
+  redirectUri: string,
+): boolean {
+  let url: URL
+  try {
+    url = new URL(redirectUri)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:') return false
+  if (!CHATGPT_CONNECTOR_OAUTH_HOSTS.has(url.hostname)) return false
+  if (url.search || url.hash) return false
+  const match = /^\/connector\/oauth\/([A-Za-z0-9._-]+)$/.exec(url.pathname)
+  return Boolean(match?.[1])
+}
+
 export function isAllowedDcrRedirectUri(uri: string): boolean {
-  return (DCR_REDIRECT_URI_ALLOWLIST as readonly string[]).includes(uri)
+  return (
+    (DCR_REDIRECT_URI_ALLOWLIST as readonly string[]).includes(uri) ||
+    isChatGptConnectorOauthRedirectUri(uri)
+  )
+}
+
+export type McpClientsStore = OAuthRegisteredClientsStore & {
+  /** Remember a ChatGPT per-connector callback for this process (exact match). */
+  rememberAllowedRedirectUri?: (redirectUri: string | undefined) => void
 }
 
 export function createStaticClientsStore(opts: {
   clientId: string
   clientSecret: string
   allowDynamicRegistration?: boolean
-}): OAuthRegisteredClientsStore {
+}): McpClientsStore {
   const clients = new Map<string, OAuthClientInformationFull>()
+  const dynamicRedirectUris = new Set<string>()
   const allowDynamicRegistration = opts.allowDynamicRegistration === true
 
-  const staticClient: OAuthClientInformationFull = {
+  const staticClientBase: OAuthClientInformationFull = {
     client_id: opts.clientId,
     client_secret: opts.clientSecret,
     client_id_issued_at: Math.floor(Date.now() / 1000),
     client_secret_expires_at: 0,
-    redirect_uris: [
-      CLAUDE_MCP_REDIRECT_URI,
-      CLAUDE_COM_MCP_REDIRECT_URI,
-      ...CLAUDE_CODE_REDIRECT_URIS,
-      ...CURSOR_MCP_REDIRECT_URIS,
-    ],
+    redirect_uris: [...MCP_OAUTH_FIXED_REDIRECT_URIS],
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     token_endpoint_auth_method: 'client_secret_post',
     client_name: 'SettlementOS Explorer MCP',
   }
-  clients.set(staticClient.client_id, staticClient)
+  clients.set(staticClientBase.client_id, staticClientBase)
 
-  const store: OAuthRegisteredClientsStore = {
+  const store: McpClientsStore = {
     async getClient(clientId: string) {
       const client = clients.get(clientId)
-      return client ? { ...client } : undefined
+      if (!client) return undefined
+      if (clientId === staticClientBase.client_id) {
+        return {
+          ...client,
+          redirect_uris: [
+            ...MCP_OAUTH_FIXED_REDIRECT_URIS,
+            ...dynamicRedirectUris,
+          ],
+        }
+      }
+      return { ...client }
+    },
+    rememberAllowedRedirectUri(redirectUri) {
+      if (
+        typeof redirectUri === 'string' &&
+        isChatGptConnectorOauthRedirectUri(redirectUri)
+      ) {
+        dynamicRedirectUris.add(redirectUri)
+      }
     },
   }
 
