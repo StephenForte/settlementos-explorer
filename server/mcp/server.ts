@@ -99,7 +99,7 @@ export function createExplorerMcpServer(): McpServer {
     {
       title: 'List networks',
       description:
-        'List supported SettlementOS explorer networks (Base Sepolia, Polygon Amoy).',
+        'List supported SettlementOS explorer networks (Base Sepolia, ForteL2 Sepolia, Polygon Amoy).',
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () =>
@@ -120,7 +120,7 @@ export function createExplorerMcpServer(): McpServer {
         networkId: z
           .string()
           .optional()
-          .describe('base-sepolia | polygon-amoy'),
+          .describe('base-sepolia | fortel2-sepolia | polygon-amoy'),
         role: z
           .enum(ROLES)
           .optional()
@@ -151,7 +151,9 @@ export function createExplorerMcpServer(): McpServer {
       description:
         'Read native + known token balances for an address on a network (public RPC).',
       inputSchema: {
-        networkId: z.string().describe('base-sepolia | polygon-amoy'),
+        networkId: z
+          .string()
+          .describe('base-sepolia | fortel2-sepolia | polygon-amoy'),
         address: z.string().describe('0x… address'),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -192,7 +194,9 @@ export function createExplorerMcpServer(): McpServer {
       description:
         'Load the activity timeline for an address (token transfers, native txs, escrow events).',
       inputSchema: {
-        networkId: z.string().describe('base-sepolia | polygon-amoy'),
+        networkId: z
+          .string()
+          .describe('base-sepolia | fortel2-sepolia | polygon-amoy'),
         address: z.string().describe('0x… address'),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -385,7 +389,9 @@ export function createExplorerMcpServer(): McpServer {
       description:
         'Load balances + recent activity for an address into a Q&A prompt.',
       argsSchema: {
-        networkId: z.string().describe('base-sepolia | polygon-amoy'),
+        networkId: z
+          .string()
+          .describe('base-sepolia | fortel2-sepolia | polygon-amoy'),
         address: z.string().describe('0x… address'),
       },
     },
@@ -534,7 +540,7 @@ export function createExplorerMcpServer(): McpServer {
             content: {
               type: 'text' as const,
               text: [
-                'Compare these SettlementOS entities across Base Sepolia and Polygon Amoy.',
+                'Compare these SettlementOS entities across Base Sepolia, ForteL2 Sepolia, and Polygon Amoy.',
                 'Cover wallets, roles, and balance differences when present.',
                 errors.length ? `Load errors:\n${errors.join('\n')}` : '',
                 '',

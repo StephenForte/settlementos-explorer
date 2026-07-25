@@ -6,6 +6,7 @@ import type {
 } from '../chain/transfers'
 import { explorerTxUrl, type NetworkId } from '../config/networks'
 import { truncateAddress } from '../config/address-book'
+import { ExplorerLink } from './ExplorerLink'
 import { formatTimestamp } from '../lib/format'
 
 function TransferRow({
@@ -38,14 +39,12 @@ function TransferRow({
       </td>
       <td>{formatTimestamp(item.timestamp)}</td>
       <td>
-        <a
+        <ExplorerLink
           href={explorerTxUrl(networkId, item.txHash)}
-          target="_blank"
-          rel="noreferrer"
           className="mono"
         >
           {truncateAddress(item.txHash, 6)}
-        </a>
+        </ExplorerLink>
       </td>
     </tr>
   )
@@ -85,14 +84,12 @@ function NativeRow({
       </td>
       <td>{formatTimestamp(item.timestamp)}</td>
       <td>
-        <a
+        <ExplorerLink
           href={explorerTxUrl(networkId, item.txHash)}
-          target="_blank"
-          rel="noreferrer"
           className="mono"
         >
           {truncateAddress(item.txHash, 6)}
-        </a>
+        </ExplorerLink>
       </td>
     </tr>
   )
@@ -166,14 +163,12 @@ export function TransferTable({
                 </td>
                 <td>{formatTimestamp(item.timestamp)}</td>
                 <td>
-                  <a
+                  <ExplorerLink
                     href={explorerTxUrl(networkId, item.txHash)}
-                    target="_blank"
-                    rel="noreferrer"
                     className="mono"
                   >
                     {truncateAddress(item.txHash, 6)}
-                  </a>
+                  </ExplorerLink>
                 </td>
               </tr>
             )

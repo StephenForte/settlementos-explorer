@@ -536,24 +536,39 @@ async function fetchTransfers(
   let truncated = false
   let error: string | undefined
 
-  try {
-    const activity = await fetchExplorerActivity(networkId, address)
-    transfers = activity.tokens
-    native = activity.native
-  } catch (err) {
-    error = err instanceof Error ? err.message : 'Explorer API failed'
+  if (NETWORKS[networkId].etherscanApi) {
+    try {
+      const activity = await fetchExplorerActivity(networkId, address)
+      transfers = activity.tokens
+      native = activity.native
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Explorer API failed'
+      try {
+        transfers = await fetchRpcTransfers(networkId, address)
+        source = 'rpc-logs'
+        truncated = true
+      } catch (fallbackErr) {
+        return {
+          items: [],
+          source: 'rpc-logs',
+          truncated: true,
+          error: `${error}; RPC fallback: ${
+            fallbackErr instanceof Error ? fallbackErr.message : 'failed'
+          }`,
+        }
+      }
+    }
+  } else {
     try {
       transfers = await fetchRpcTransfers(networkId, address)
       source = 'rpc-logs'
       truncated = true
-    } catch (fallbackErr) {
+    } catch (err) {
       return {
         items: [],
         source: 'rpc-logs',
         truncated: true,
-        error: `${error}; RPC fallback: ${
-          fallbackErr instanceof Error ? fallbackErr.message : 'failed'
-        }`,
+        error: err instanceof Error ? err.message : 'RPC history failed',
       }
     }
   }

@@ -64,7 +64,7 @@ const SHARED_TOKENS = {
   },
 } as const
 
-/** Shared PaymentSettlement address on both testnets. */
+/** Shared PaymentSettlement address on Base Sepolia and Polygon Amoy. */
 export const PAYMENT_SETTLEMENT_ADDRESS =
   '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
 const OPERATOR = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
@@ -150,7 +150,7 @@ export const ADDRESS_BOOK: AddressEntry[] = [
   }),
 ]
 
-/** Tokens known on a network (same addresses on both testnets). */
+/** Tokens known on a network (same addresses on Base / Amoy today). */
 export function getTokens(networkId: NetworkId): TokenMeta[] {
   return ADDRESS_BOOK.filter(
     (e): e is AddressEntry & { token: TokenMeta } =>

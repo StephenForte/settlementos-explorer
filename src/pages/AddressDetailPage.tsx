@@ -16,6 +16,7 @@ import {
 import { BalanceChips } from '../components/BalanceChips'
 import { CopyButton } from '../components/CopyButton'
 import { CounterpartySummary } from '../components/CounterpartySummary'
+import { ExplorerLink } from '../components/ExplorerLink'
 import { RoleBadge } from '../components/RoleBadge'
 import { StatusBanner } from '../components/StatusBanner'
 import { TransferTable } from '../components/TransferTable'
@@ -52,10 +53,12 @@ function AddressDetail({
     getTransfers(networkId, address),
   )
 
-  const otherWallet =
+  const otherWallets =
     entry?.entityId != null
-      ? getEntityWallets(entry.entityId).find((w) => w.networkId !== networkId)
-      : undefined
+      ? getEntityWallets(entry.entityId).filter((w) => w.networkId !== networkId)
+      : []
+
+  const explorerName = NETWORKS[networkId].explorerName
 
   return (
     <div className="page">
@@ -72,13 +75,11 @@ function AddressDetail({
         <div className="address-row-meta">
           <span className="mono break">{address}</span>
           <CopyButton text={address} />
-          <a
-            href={explorerAddressUrl(networkId, address)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View on {NETWORKS[networkId].explorerName} ↗
-          </a>
+          {explorerName ? (
+            <ExplorerLink href={explorerAddressUrl(networkId, address)}>
+              View on {explorerName} ↗
+            </ExplorerLink>
+          ) : null}
         </div>
         {entry?.entityId ? (
           <p>
@@ -87,14 +88,14 @@ function AddressDetail({
         ) : null}
       </section>
 
-      {otherWallet ? (
-        <StatusBanner>
+      {otherWallets.map((otherWallet) => (
+        <StatusBanner key={otherWallet.networkId}>
           Same entity on {NETWORKS[otherWallet.networkId].name}:{' '}
           <Link to={`/${otherWallet.networkId}/address/${otherWallet.address}`}>
             {truncateAddress(otherWallet.address)}
           </Link>
         </StatusBanner>
-      ) : null}
+      ))}
 
       <section className="section">
         <div className="section-head">
@@ -127,8 +128,10 @@ function AddressDetail({
         </div>
         <p className="muted small">
           Native {NETWORKS[networkId].nativeSymbol} transfers and SettlementOS
-          token transfers, newest first. Each tx links to{' '}
-          {NETWORKS[networkId].explorerName}.
+          token transfers, newest first.
+          {explorerName
+            ? ` Each tx links to ${explorerName}.`
+            : ' Tx hashes are shown raw (no public explorer yet).'}
         </p>
         {transfers.status === 'loading' ? (
           <p className="muted">Loading transactions…</p>

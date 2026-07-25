@@ -14,6 +14,7 @@ import { TransferTable } from '../components/TransferTable'
 import { useAsync } from '../hooks/useAsync'
 import { formatTimestamp } from '../lib/format'
 import { explorerTxUrl } from '../config/networks'
+import { ExplorerLink } from '../components/ExplorerLink'
 
 export function EntityPage() {
   const { entityId: raw } = useParams()
@@ -34,8 +35,9 @@ export function EntityPage() {
         <p className="eyebrow">Cross-network entity</p>
         <h1>{entity.displayName}</h1>
         <p className="lede">
-          Wallets and activity on Base Sepolia and Polygon Amoy, joined into one
-          timeline so the USD→JPY settlement path is visible end-to-end.
+          Wallets and activity across Base Sepolia, ForteL2 Sepolia, and Polygon
+          Amoy, joined into one timeline so settlement paths are visible
+          end-to-end.
         </p>
       </section>
 
@@ -168,14 +170,12 @@ function MergedTimeline({
                       </td>
                       <td>{formatTimestamp(item.timestamp)}</td>
                       <td>
-                        <a
+                        <ExplorerLink
                           href={explorerTxUrl(item.networkId, item.txHash)}
-                          target="_blank"
-                          rel="noreferrer"
                           className="mono"
                         >
                           {truncateAddress(item.txHash, 6)}
-                        </a>
+                        </ExplorerLink>
                       </td>
                     </tr>
                   )
@@ -198,14 +198,12 @@ function MergedTimeline({
                       </td>
                       <td>{formatTimestamp(item.timestamp)}</td>
                       <td>
-                        <a
+                        <ExplorerLink
                           href={explorerTxUrl(item.networkId, item.txHash)}
-                          target="_blank"
-                          rel="noreferrer"
                           className="mono"
                         >
                           {truncateAddress(item.txHash, 6)}
-                        </a>
+                        </ExplorerLink>
                       </td>
                     </tr>
                   )
@@ -221,14 +219,12 @@ function MergedTimeline({
                     </td>
                     <td>{formatTimestamp(item.timestamp)}</td>
                     <td>
-                      <a
+                      <ExplorerLink
                         href={explorerTxUrl(item.networkId, item.txHash)}
-                        target="_blank"
-                        rel="noreferrer"
                         className="mono"
                       >
                         {truncateAddress(item.txHash, 6)}
-                      </a>
+                      </ExplorerLink>
                     </td>
                   </tr>
                 )
