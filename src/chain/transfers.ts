@@ -77,6 +77,11 @@ export interface TransfersResult {
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
 const LOG_WINDOW_BLOCKS = 50_000n
 const LOG_CHUNK = 2_000n
+/** Recent-block window for native tx discovery (no explorer / indexer). */
+const NATIVE_SCAN_BLOCKS = 2_000n
+const NATIVE_SCAN_CONCURRENCY = 16
+/** Match explorer txlist page size. */
+const NATIVE_RESULT_LIMIT = 100
 
 interface EtherscanTokentxRow {
   hash: string
@@ -419,6 +424,78 @@ async function fetchRpcTransfers(
   return transfers
 }
 
+/**
+ * Discover native (and zero-value) txs by scanning recent blocks.
+ * Used for networks without an explorer account API — eth_getLogs cannot
+ * surface value transfers that emit no ERC-20 Transfer event.
+ */
+async function fetchRpcNativeTxs(
+  networkId: NetworkId,
+  address: string,
+): Promise<NativeTxEvent[]> {
+  const client = getPublicClient(networkId)
+  const latest = await client.getBlockNumber()
+  const fromBlock =
+    latest > NATIVE_SCAN_BLOCKS ? latest - NATIVE_SCAN_BLOCKS : 0n
+  const addr = address.toLowerCase()
+  const items: NativeTxEvent[] = []
+
+  let end = latest
+  while (end >= fromBlock && items.length < NATIVE_RESULT_LIMIT) {
+    const batchStart = end + 1n - BigInt(NATIVE_SCAN_CONCURRENCY)
+    const start = batchStart < fromBlock ? fromBlock : batchStart
+    const blockNumbers: bigint[] = []
+    for (let bn = end; bn >= start; bn--) {
+      blockNumbers.push(bn)
+    }
+
+    const blocks = await Promise.all(
+      blockNumbers.map(async (bn) => {
+        try {
+          return await client.getBlock({
+            blockNumber: bn,
+            includeTransactions: true,
+          })
+        } catch {
+          return null
+        }
+      }),
+    )
+
+    for (const block of blocks) {
+      if (!block || items.length >= NATIVE_RESULT_LIMIT) continue
+      const txs = block.transactions ?? []
+      for (const tx of txs) {
+        if (typeof tx === 'string') continue
+        const from = tx.from.toLowerCase()
+        const to = (tx.to ?? '').toLowerCase()
+        if (from !== addr && to !== addr) continue
+        const amountRaw = tx.value
+        const input = tx.input ?? '0x'
+        const method = input !== '0x' ? input.slice(0, 10) : undefined
+        items.push(
+          annotateNative(networkId, {
+            from: tx.from,
+            to: tx.to ?? address,
+            amountRaw,
+            amountFormatted: formatTokenAmount(amountRaw, 18),
+            txHash: tx.hash,
+            blockNumber: Number(block.number),
+            timestamp: Number(block.timestamp),
+            method,
+          }),
+        )
+        if (items.length >= NATIVE_RESULT_LIMIT) break
+      }
+    }
+
+    if (start === 0n) break
+    end = start - 1n
+  }
+
+  return items
+}
+
 async function fetchEscrowEvents(
   networkId: NetworkId,
   address: string,
@@ -560,14 +637,26 @@ async function fetchTransfers(
     }
   } else {
     // Networks without an explorer API use RPC as the primary source.
+    // Token history comes from eth_getLogs; native txs from a recent-block scan
+    // (value transfers leave no ERC-20 Transfer log).
     // Do not mark truncated — that flag means explorer outage / degraded fallback.
-    // Reject on failure so callers (useAsync) surface an error instead of an
-    // empty timeline that looks like a quiet wallet.
-    try {
-      transfers = await fetchRpcTransfers(networkId, address)
-      source = 'rpc-logs'
-    } catch (err) {
-      throw err instanceof Error ? err : new Error('RPC history failed')
+    // Reject only when both sources fail so callers (useAsync) surface an error
+    // instead of an empty timeline that looks like a quiet wallet.
+    const [tokenResult, nativeResult] = await Promise.allSettled([
+      fetchRpcTransfers(networkId, address),
+      fetchRpcNativeTxs(networkId, address),
+    ])
+    transfers =
+      tokenResult.status === 'fulfilled' ? tokenResult.value : []
+    native = nativeResult.status === 'fulfilled' ? nativeResult.value : []
+    source = 'rpc-logs'
+
+    if (tokenResult.status === 'rejected' && nativeResult.status === 'rejected') {
+      const reason =
+        tokenResult.reason instanceof Error
+          ? tokenResult.reason
+          : new Error('RPC history failed')
+      throw reason
     }
   }
 
