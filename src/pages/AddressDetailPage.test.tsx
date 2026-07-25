@@ -138,4 +138,40 @@ describe('AddressDetailPage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/explorer API unavailable/i)).not.toBeInTheDocument()
   })
+
+  it('shows a warning and keeps rows when RPC history is partial', async () => {
+    mockedGetTransfers.mockResolvedValue({
+      items: [
+        {
+          kind: 'native',
+          networkId: 'fortel2-sepolia',
+          from: '0x5128889F20Ec13e0Be38b2BeBC568594159B652d',
+          to: '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+          fromLabel: 'Operator',
+          toLabel: 'ACME US Inc',
+          amountRaw: 1_000_000_000_000_000n,
+          amountFormatted: '0.001',
+          symbol: 'ETH',
+          txHash: '0xnative-partial',
+          blockNumber: 4,
+          timestamp: 1_700_000_044,
+        },
+      ],
+      source: 'rpc-logs',
+      truncated: false,
+      error: 'token history: eth_getLogs timed out',
+    })
+
+    renderAddress(
+      '/fortel2-sepolia/address/0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+
+    expect(
+      await screen.findByText(/Partial history: token history/i),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/0xnative/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Explorer \/ RPC history failed/i),
+    ).not.toBeInTheDocument()
+  })
 })

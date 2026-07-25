@@ -139,12 +139,19 @@ function AddressDetail({
           <StatusBanner tone="error">
             Explorer / RPC history failed: {transfers.error}
           </StatusBanner>
-        ) : transfers.data.error && !transfers.data.truncated ? (
+        ) : transfers.data.error &&
+          !transfers.data.truncated &&
+          transfers.data.items.length === 0 ? (
           <StatusBanner tone="error">
             Explorer / RPC history failed: {transfers.data.error}
           </StatusBanner>
         ) : (
           <>
+            {transfers.data.error && !transfers.data.truncated ? (
+              <StatusBanner tone="warn">
+                Partial history: {transfers.data.error}
+              </StatusBanner>
+            ) : null}
             {transfers.data.truncated && NETWORKS[networkId].etherscanApi ? (
               <StatusBanner tone="warn">
                 Recent activity only — explorer API unavailable

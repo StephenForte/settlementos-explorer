@@ -640,8 +640,8 @@ async function fetchTransfers(
     // Token history comes from eth_getLogs; native txs from a recent-block scan
     // (value transfers leave no ERC-20 Transfer log).
     // Do not mark truncated — that flag means explorer outage / degraded fallback.
-    // Reject only when both sources fail so callers (useAsync) surface an error
-    // instead of an empty timeline that looks like a quiet wallet.
+    // Reject when both sources fail. If only one fails, keep any partial items
+    // and set error so the UI does not treat an empty timeline as a quiet wallet.
     const [tokenResult, nativeResult] = await Promise.allSettled([
       fetchRpcTransfers(networkId, address),
       fetchRpcNativeTxs(networkId, address),
@@ -651,12 +651,36 @@ async function fetchTransfers(
     native = nativeResult.status === 'fulfilled' ? nativeResult.value : []
     source = 'rpc-logs'
 
-    if (tokenResult.status === 'rejected' && nativeResult.status === 'rejected') {
+    const failures: string[] = []
+    if (tokenResult.status === 'rejected') {
+      failures.push(
+        `token history: ${
+          tokenResult.reason instanceof Error
+            ? tokenResult.reason.message
+            : 'failed'
+        }`,
+      )
+    }
+    if (nativeResult.status === 'rejected') {
+      failures.push(
+        `native history: ${
+          nativeResult.reason instanceof Error
+            ? nativeResult.reason.message
+            : 'failed'
+        }`,
+      )
+    }
+
+    if (failures.length === 2) {
       const reason =
+        tokenResult.status === 'rejected' &&
         tokenResult.reason instanceof Error
           ? tokenResult.reason
           : new Error('RPC history failed')
       throw reason
+    }
+    if (failures.length === 1) {
+      error = failures[0]
     }
   }
 

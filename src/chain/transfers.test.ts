@@ -283,6 +283,21 @@ describe('getTransfers', () => {
     ).rejects.toThrow(/sequencer unreachable/)
   })
 
+  it('sets error when one RPC source fails and the other returns empty', async () => {
+    mockPublicClient.getBlockNumber
+      .mockResolvedValueOnce(1000n)
+      .mockRejectedValueOnce(new Error('native tip failed'))
+
+    const result = await getTransfers(
+      'fortel2-sepolia',
+      '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.items).toHaveLength(0)
+    expect(result.error).toMatch(/native tip failed/)
+  })
+
   it('filters unknown ERC-20s out of tokentx results', async () => {
     mockExplorerFetch({
       tokentx: {
