@@ -103,4 +103,39 @@ describe('AddressDetailPage', () => {
       await screen.findByText(/explorer API unavailable/i),
     ).toBeInTheDocument()
   })
+
+  it('shows an error when transfer history loading rejects', async () => {
+    mockedGetTransfers.mockRejectedValue(new Error('RPC history failed'))
+
+    renderAddress(
+      '/fortel2-sepolia/address/0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+
+    expect(
+      await screen.findByText(/Explorer \/ RPC history failed: RPC history failed/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/No recent transactions found/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows an error for soft RPC failures without truncated fallback', async () => {
+    mockedGetTransfers.mockResolvedValue({
+      items: [],
+      source: 'rpc-logs',
+      truncated: false,
+      error: 'eth_getLogs timed out',
+    })
+
+    renderAddress(
+      '/fortel2-sepolia/address/0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+
+    expect(
+      await screen.findByText(
+        /Explorer \/ RPC history failed: eth_getLogs timed out/i,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/explorer API unavailable/i)).not.toBeInTheDocument()
+  })
 })

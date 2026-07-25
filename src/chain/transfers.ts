@@ -561,16 +561,13 @@ async function fetchTransfers(
   } else {
     // Networks without an explorer API use RPC as the primary source.
     // Do not mark truncated — that flag means explorer outage / degraded fallback.
+    // Reject on failure so callers (useAsync) surface an error instead of an
+    // empty timeline that looks like a quiet wallet.
     try {
       transfers = await fetchRpcTransfers(networkId, address)
       source = 'rpc-logs'
     } catch (err) {
-      return {
-        items: [],
-        source: 'rpc-logs',
-        truncated: false,
-        error: err instanceof Error ? err.message : 'RPC history failed',
-      }
+      throw err instanceof Error ? err : new Error('RPC history failed')
     }
   }
 

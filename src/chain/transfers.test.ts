@@ -9,18 +9,25 @@ import {
   type TransferEvent,
 } from './transfers'
 
+const mockPublicClient = {
+  getBlockNumber: vi.fn(async () => 1000n),
+  getLogs: vi.fn(async () => []),
+  getBlock: vi.fn(async () => ({ timestamp: 1_700_000_000n })),
+}
+
 vi.mock('../lib/clients', () => ({
-  getPublicClient: () => ({
-    getBlockNumber: async () => 1000n,
-    getLogs: async () => [],
-    getBlock: async () => ({ timestamp: 1_700_000_000n }),
-  }),
+  getPublicClient: () => mockPublicClient,
 }))
 
 afterEach(() => {
   cacheClear()
   vi.unstubAllGlobals()
-  vi.restoreAllMocks()
+  mockPublicClient.getBlockNumber.mockReset()
+  mockPublicClient.getLogs.mockReset()
+  mockPublicClient.getBlock.mockReset()
+  mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+  mockPublicClient.getLogs.mockResolvedValue([])
+  mockPublicClient.getBlock.mockResolvedValue({ timestamp: 1_700_000_000n })
 })
 
 function mockExplorerFetch(handlers: {
@@ -189,6 +196,19 @@ describe('getTransfers', () => {
     expect(result.source).toBe('rpc-logs')
     expect(result.truncated).toBe(false)
     expect(result.error).toBeUndefined()
+  })
+
+  it('rejects when primary RPC history fails on networks without Etherscan', async () => {
+    mockPublicClient.getBlockNumber.mockRejectedValue(
+      new Error('sequencer unreachable'),
+    )
+
+    await expect(
+      getTransfers(
+        'fortel2-sepolia',
+        '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+      ),
+    ).rejects.toThrow(/sequencer unreachable/)
   })
 
   it('filters unknown ERC-20s out of tokentx results', async () => {

@@ -139,6 +139,10 @@ function AddressDetail({
           <StatusBanner tone="error">
             Explorer / RPC history failed: {transfers.error}
           </StatusBanner>
+        ) : transfers.data.error && !transfers.data.truncated ? (
+          <StatusBanner tone="error">
+            Explorer / RPC history failed: {transfers.data.error}
+          </StatusBanner>
         ) : (
           <>
             {transfers.data.truncated && NETWORKS[networkId].etherscanApi ? (
