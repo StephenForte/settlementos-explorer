@@ -88,12 +88,19 @@ function NetworkWalletPanel({
       )}
       <h3>Recent transfers</h3>
       {transfers.status === 'ok' ? (
-        transfers.data.error && !transfers.data.truncated ? (
+        transfers.data.error &&
+        !transfers.data.truncated &&
+        transfers.data.items.length === 0 ? (
           <StatusBanner tone="warn">
             History unavailable: {transfers.data.error}
           </StatusBanner>
         ) : (
           <>
+            {transfers.data.error && !transfers.data.truncated ? (
+              <StatusBanner tone="warn">
+                Partial history: {transfers.data.error}
+              </StatusBanner>
+            ) : null}
             {transfers.data.truncated && NETWORKS[networkId].etherscanApi ? (
               <StatusBanner tone="warn">Recent activity only (RPC fallback)</StatusBanner>
             ) : null}
