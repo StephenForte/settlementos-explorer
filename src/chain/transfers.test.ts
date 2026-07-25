@@ -181,6 +181,16 @@ describe('getTransfers', () => {
     expect(result.error).toMatch(/Explorer API/)
   })
 
+  it('uses RPC as primary source without truncated for networks without Etherscan', async () => {
+    const result = await getTransfers(
+      'fortel2-sepolia',
+      '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toBeUndefined()
+  })
+
   it('filters unknown ERC-20s out of tokentx results', async () => {
     mockExplorerFetch({
       tokentx: {

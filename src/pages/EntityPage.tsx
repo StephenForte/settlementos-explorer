@@ -89,7 +89,7 @@ function NetworkWalletPanel({
       <h3>Recent transfers</h3>
       {transfers.status === 'ok' ? (
         <>
-          {transfers.data.truncated ? (
+          {transfers.data.truncated && NETWORKS[networkId].etherscanApi ? (
             <StatusBanner tone="warn">Recent activity only (RPC fallback)</StatusBanner>
           ) : null}
           <TransferTable

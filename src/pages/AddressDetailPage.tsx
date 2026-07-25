@@ -141,7 +141,7 @@ function AddressDetail({
           </StatusBanner>
         ) : (
           <>
-            {transfers.data.truncated ? (
+            {transfers.data.truncated && NETWORKS[networkId].etherscanApi ? (
               <StatusBanner tone="warn">
                 Recent activity only — explorer API unavailable
                 {transfers.data.error ? ` (${transfers.data.error})` : ''};

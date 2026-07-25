@@ -559,15 +559,16 @@ async function fetchTransfers(
       }
     }
   } else {
+    // Networks without an explorer API use RPC as the primary source.
+    // Do not mark truncated — that flag means explorer outage / degraded fallback.
     try {
       transfers = await fetchRpcTransfers(networkId, address)
       source = 'rpc-logs'
-      truncated = true
     } catch (err) {
       return {
         items: [],
         source: 'rpc-logs',
-        truncated: true,
+        truncated: false,
         error: err instanceof Error ? err.message : 'RPC history failed',
       }
     }
