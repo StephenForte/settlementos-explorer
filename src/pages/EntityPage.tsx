@@ -14,6 +14,7 @@ import { TransferTable } from '../components/TransferTable'
 import { useAsync } from '../hooks/useAsync'
 import { formatTimestamp } from '../lib/format'
 import { explorerTxUrl } from '../config/networks'
+import { ExplorerLink } from '../components/ExplorerLink'
 
 export function EntityPage() {
   const { entityId: raw } = useParams()
@@ -34,8 +35,9 @@ export function EntityPage() {
         <p className="eyebrow">Cross-network entity</p>
         <h1>{entity.displayName}</h1>
         <p className="lede">
-          Wallets and activity on Base Sepolia and Polygon Amoy, joined into one
-          timeline so the USD→JPY settlement path is visible end-to-end.
+          Wallets and activity across Base Sepolia, ForteL2 Sepolia, and Polygon
+          Amoy, joined into one timeline so settlement paths are visible
+          end-to-end.
         </p>
       </section>
 
@@ -86,16 +88,22 @@ function NetworkWalletPanel({
       )}
       <h3>Recent transfers</h3>
       {transfers.status === 'ok' ? (
-        <>
-          {transfers.data.truncated ? (
-            <StatusBanner tone="warn">Recent activity only (RPC fallback)</StatusBanner>
-          ) : null}
-          <TransferTable
-            items={transfers.data.items.slice(0, 10)}
-            self={address}
-            networkId={networkId}
-          />
-        </>
+        transfers.data.error && !transfers.data.truncated ? (
+          <StatusBanner tone="warn">
+            History unavailable: {transfers.data.error}
+          </StatusBanner>
+        ) : (
+          <>
+            {transfers.data.truncated && NETWORKS[networkId].etherscanApi ? (
+              <StatusBanner tone="warn">Recent activity only (RPC fallback)</StatusBanner>
+            ) : null}
+            <TransferTable
+              items={transfers.data.items.slice(0, 10)}
+              self={address}
+              networkId={networkId}
+            />
+          </>
+        )
       ) : transfers.status === 'error' ? (
         <StatusBanner tone="warn">
           History unavailable: {transfers.error}
@@ -114,20 +122,64 @@ function MergedTimeline({
 }) {
   const key = wallets.map((w) => `${w.networkId}:${w.address}`).join('|')
   const merged = useAsync(`merged:${key}`, async () => {
-    const results = await Promise.all(
+    // Per-wallet failures (e.g. ForteL2 RPC history) must not hide other
+    // networks' activity from the merged timeline.
+    const settled = await Promise.allSettled(
       wallets.map(async (w) => {
         const res = await getTransfers(w.networkId, w.address)
-        return res.items.map((item) => ({ ...item, networkId: w.networkId }))
+        return {
+          networkId: w.networkId,
+          items: res.items.map((item) => ({
+            ...item,
+            networkId: w.networkId,
+          })) as TimelineItem[],
+          softError:
+            res.error && !res.truncated ? res.error : undefined,
+        }
       }),
     )
-    const items = results.flat() as TimelineItem[]
+
+    const items: TimelineItem[] = []
+    const failures: Array<{ networkId: NetworkId; error: string }> = []
+
+    for (let i = 0; i < settled.length; i++) {
+      const result = settled[i]!
+      const wallet = wallets[i]!
+      if (result.status === 'fulfilled') {
+        items.push(...result.value.items)
+        if (result.value.softError) {
+          failures.push({
+            networkId: wallet.networkId,
+            error: result.value.softError,
+          })
+        }
+      } else {
+        failures.push({
+          networkId: wallet.networkId,
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : 'History unavailable',
+        })
+      }
+    }
+
     items.sort((a, b) => {
       const tb = b.timestamp ?? 0
       const ta = a.timestamp ?? 0
       if (tb !== ta) return tb - ta
       return b.blockNumber - a.blockNumber
     })
-    return items
+
+    if (items.length === 0 && failures.length === wallets.length) {
+      throw new Error(
+        failures
+          .map((f) => `${NETWORKS[f.networkId].name}: ${f.error}`)
+          .join('; '),
+      )
+    }
+
+    return { items, failures }
   })
 
   return (
@@ -137,105 +189,116 @@ function MergedTimeline({
         <p className="muted">Merging timelines…</p>
       ) : merged.status === 'error' ? (
         <StatusBanner tone="error">{merged.error}</StatusBanner>
-      ) : merged.data.length === 0 ? (
-        <p className="muted">No activity yet across networks.</p>
       ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Network</th>
-                <th>Event</th>
-                <th>Amount</th>
-                <th>Time</th>
-                <th>Tx</th>
-              </tr>
-            </thead>
-            <tbody>
-              {merged.data.slice(0, 40).map((item) => {
-                if (item.kind === 'transfer') {
-                  return (
-                    <tr
-                      key={`t-${item.networkId}-${item.txHash}-${item.from}-${item.to}-${item.token.address}`}
-                    >
-                      <td>{NETWORKS[item.networkId].name}</td>
-                      <td>
-                        {item.fromLabel} → {item.toLabel}
-                        <div className="muted small">Token transfer</div>
-                      </td>
-                      <td>
-                        {item.amountFormatted} {item.token.symbol}
-                      </td>
-                      <td>{formatTimestamp(item.timestamp)}</td>
-                      <td>
-                        <a
-                          href={explorerTxUrl(item.networkId, item.txHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mono"
-                        >
-                          {truncateAddress(item.txHash, 6)}
-                        </a>
-                      </td>
-                    </tr>
-                  )
-                }
-                if (item.kind === 'native') {
-                  return (
-                    <tr
-                      key={`n-${item.networkId}-${item.txHash}-${item.from}-${item.to}`}
-                    >
-                      <td>{NETWORKS[item.networkId].name}</td>
-                      <td>
-                        {item.fromLabel} → {item.toLabel}
-                        <div className="muted small">
-                          Native {item.symbol}
-                          {item.method ? ` · ${item.method}` : ''}
-                        </div>
-                      </td>
-                      <td>
-                        {item.amountFormatted} {item.symbol}
-                      </td>
-                      <td>{formatTimestamp(item.timestamp)}</td>
-                      <td>
-                        <a
-                          href={explorerTxUrl(item.networkId, item.txHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mono"
-                        >
-                          {truncateAddress(item.txHash, 6)}
-                        </a>
-                      </td>
-                    </tr>
-                  )
-                }
-                return (
-                  <tr key={`e-${item.networkId}-${item.txHash}-${item.eventName}`}>
-                    <td>{NETWORKS[item.networkId].name}</td>
-                    <td>{item.eventName}</td>
-                    <td>
-                      {item.amountFormatted
-                        ? `${item.amountFormatted}${item.token ? ` ${item.token.symbol}` : ''}`
-                        : '—'}
-                    </td>
-                    <td>{formatTimestamp(item.timestamp)}</td>
-                    <td>
-                      <a
-                        href={explorerTxUrl(item.networkId, item.txHash)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mono"
-                      >
-                        {truncateAddress(item.txHash, 6)}
-                      </a>
-                    </td>
-                  </tr>
+        <>
+          {merged.data.failures.length > 0 ? (
+            <StatusBanner tone="warn">
+              Partial history:{' '}
+              {merged.data.failures
+                .map(
+                  (f) =>
+                    `${NETWORKS[f.networkId].name} unavailable (${f.error})`,
                 )
-              })}
-            </tbody>
-          </table>
-        </div>
+                .join('; ')}
+            </StatusBanner>
+          ) : null}
+          {merged.data.items.length === 0 ? (
+            <p className="muted">No activity yet across networks.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Network</th>
+                    <th>Event</th>
+                    <th>Amount</th>
+                    <th>Time</th>
+                    <th>Tx</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {merged.data.items.slice(0, 40).map((item) => {
+                    if (item.kind === 'transfer') {
+                      return (
+                        <tr
+                          key={`t-${item.networkId}-${item.txHash}-${item.from}-${item.to}-${item.token.address}`}
+                        >
+                          <td>{NETWORKS[item.networkId].name}</td>
+                          <td>
+                            {item.fromLabel} → {item.toLabel}
+                            <div className="muted small">Token transfer</div>
+                          </td>
+                          <td>
+                            {item.amountFormatted} {item.token.symbol}
+                          </td>
+                          <td>{formatTimestamp(item.timestamp)}</td>
+                          <td>
+                            <ExplorerLink
+                              href={explorerTxUrl(item.networkId, item.txHash)}
+                              className="mono"
+                            >
+                              {truncateAddress(item.txHash, 6)}
+                            </ExplorerLink>
+                          </td>
+                        </tr>
+                      )
+                    }
+                    if (item.kind === 'native') {
+                      return (
+                        <tr
+                          key={`n-${item.networkId}-${item.txHash}-${item.from}-${item.to}`}
+                        >
+                          <td>{NETWORKS[item.networkId].name}</td>
+                          <td>
+                            {item.fromLabel} → {item.toLabel}
+                            <div className="muted small">
+                              Native {item.symbol}
+                              {item.method ? ` · ${item.method}` : ''}
+                            </div>
+                          </td>
+                          <td>
+                            {item.amountFormatted} {item.symbol}
+                          </td>
+                          <td>{formatTimestamp(item.timestamp)}</td>
+                          <td>
+                            <ExplorerLink
+                              href={explorerTxUrl(item.networkId, item.txHash)}
+                              className="mono"
+                            >
+                              {truncateAddress(item.txHash, 6)}
+                            </ExplorerLink>
+                          </td>
+                        </tr>
+                      )
+                    }
+                    return (
+                      <tr
+                        key={`e-${item.networkId}-${item.txHash}-${item.eventName}`}
+                      >
+                        <td>{NETWORKS[item.networkId].name}</td>
+                        <td>{item.eventName}</td>
+                        <td>
+                          {item.amountFormatted
+                            ? `${item.amountFormatted}${item.token ? ` ${item.token.symbol}` : ''}`
+                            : '—'}
+                        </td>
+                        <td>{formatTimestamp(item.timestamp)}</td>
+                        <td>
+                          <ExplorerLink
+                            href={explorerTxUrl(item.networkId, item.txHash)}
+                            className="mono"
+                          >
+                            {truncateAddress(item.txHash, 6)}
+                          </ExplorerLink>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </section>
   )

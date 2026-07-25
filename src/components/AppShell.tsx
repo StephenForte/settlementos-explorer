@@ -39,8 +39,9 @@ export function AppShell() {
         <Outlet />
       </main>
       <footer className="footer">
-        Reads public RPCs and explorer APIs only. Every claim deep-links to{' '}
-        {NETWORKS[networkId].explorerName}.
+        {NETWORKS[networkId].explorerName
+          ? `Reads public RPCs and explorer APIs only. Every claim deep-links to ${NETWORKS[networkId].explorerName}.`
+          : 'Reads public RPCs only. No public block explorer is published for this network yet — tx hashes are shown raw.'}
       </footer>
     </div>
   )

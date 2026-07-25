@@ -9,18 +9,52 @@ import {
   type TransferEvent,
 } from './transfers'
 
+type MockBlock = {
+  number: bigint
+  timestamp: bigint
+  transactions: Array<
+    | string
+    | {
+        hash: string
+        from: string
+        to: string | null
+        value: bigint
+        input: string
+      }
+  >
+}
+
+const emptyBlock = (blockNumber?: bigint): MockBlock => ({
+  number: blockNumber ?? 1n,
+  timestamp: 1_700_000_000n,
+  transactions: [],
+})
+
+const mockPublicClient = {
+  getBlockNumber: vi.fn(async () => 1000n),
+  getLogs: vi.fn(async () => []),
+  getBlock: vi.fn(
+    async ({ blockNumber }: { blockNumber?: bigint } = {}): Promise<MockBlock> =>
+      emptyBlock(blockNumber),
+  ),
+}
+
 vi.mock('../lib/clients', () => ({
-  getPublicClient: () => ({
-    getBlockNumber: async () => 1000n,
-    getLogs: async () => [],
-    getBlock: async () => ({ timestamp: 1_700_000_000n }),
-  }),
+  getPublicClient: () => mockPublicClient,
 }))
 
 afterEach(() => {
   cacheClear()
   vi.unstubAllGlobals()
-  vi.restoreAllMocks()
+  mockPublicClient.getBlockNumber.mockReset()
+  mockPublicClient.getLogs.mockReset()
+  mockPublicClient.getBlock.mockReset()
+  mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+  mockPublicClient.getLogs.mockResolvedValue([])
+  mockPublicClient.getBlock.mockImplementation(
+    async ({ blockNumber }: { blockNumber?: bigint } = {}) =>
+      emptyBlock(blockNumber),
+  )
 })
 
 function mockExplorerFetch(handlers: {
@@ -179,6 +213,74 @@ describe('getTransfers', () => {
     expect(result.source).toBe('rpc-logs')
     expect(result.truncated).toBe(true)
     expect(result.error).toMatch(/Explorer API/)
+  })
+
+  it('uses RPC as primary source without truncated for networks without Etherscan', async () => {
+    const result = await getTransfers(
+      'fortel2-sepolia',
+      '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('includes native txs from recent block scan on networks without Etherscan', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const counterparty = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
+    mockPublicClient.getBlockNumber.mockResolvedValue(5n)
+    mockPublicClient.getBlock.mockImplementation(
+      async ({
+        blockNumber,
+        includeTransactions,
+      }: {
+        blockNumber?: bigint
+        includeTransactions?: boolean
+      } = {}): Promise<MockBlock> => {
+        if (includeTransactions && blockNumber === 4n) {
+          return {
+            number: 4n,
+            timestamp: 1_700_000_044n,
+            transactions: [
+              {
+                hash: '0xnative-rpc-1',
+                from: counterparty,
+                to: self,
+                value: 1_000_000_000_000_000n,
+                input: '0x',
+              },
+            ],
+          }
+        }
+        return emptyBlock(blockNumber)
+      },
+    )
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    const native = result.items.find((i) => i.kind === 'native')
+    expect(native?.kind).toBe('native')
+    if (native?.kind === 'native') {
+      expect(native.symbol).toBe('ETH')
+      expect(native.txHash).toBe('0xnative-rpc-1')
+      expect(native.amountFormatted).toBe('0.001')
+      expect(native.from.toLowerCase()).toBe(counterparty.toLowerCase())
+      expect(native.to.toLowerCase()).toBe(self.toLowerCase())
+    }
+  })
+
+  it('rejects when primary RPC history fails on networks without Etherscan', async () => {
+    mockPublicClient.getBlockNumber.mockRejectedValue(
+      new Error('sequencer unreachable'),
+    )
+
+    await expect(
+      getTransfers(
+        'fortel2-sepolia',
+        '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+      ),
+    ).rejects.toThrow(/sequencer unreachable/)
   })
 
   it('filters unknown ERC-20s out of tokentx results', async () => {

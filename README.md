@@ -1,8 +1,8 @@
 # SettlementOS Explorer
 
-Independent, third-party view of SettlementOS on-chain activity on **Base Sepolia** and **Polygon Amoy**.
+Independent, third-party view of SettlementOS on-chain activity on **Base Sepolia**, **ForteL2 Sepolia**, and **Polygon Amoy**.
 
-This app reads **only public chain data** (public RPCs + explorer APIs). It labels addresses from a bundled address book and deep-links every claim to Basescan / Amoy Polygonscan.
+This app reads **only public chain data** (public RPCs + explorer APIs where available). It labels addresses from a bundled address book and deep-links claims to Basescan / Amoy Polygonscan. ForteL2 has no public block explorer yet — tx hashes are shown raw and history comes from RPC logs.
 
 Optional **remote MCP** (Node/Express) lets Claude / Cursor query the same public data via Streamable HTTP + Bearer or OAuth.
 
@@ -22,6 +22,8 @@ npm run dev
 ```
 
 Optional: copy `.env.example` to `.env` and set `VITE_ETHERSCAN_API_KEY` for higher Etherscan V2 rate limits. The app works without a key (free tier + `eth_getLogs` fallback).
+
+ForteL2 defaults to `http://127.0.0.1:9545` (Mac sequencer). Override with `VITE_FORTEL2_SEPOLIA_RPC_URL`, and optionally set `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` to the Render replica for reads.
 
 ### Full stack (SPA + MCP server)
 
@@ -141,12 +143,12 @@ CI (GitHub Actions) runs typecheck, lint, tests, and build on every push/PR.
 
 After a SettlementOS testnet redeploy:
 
-1. Open SettlementOS `chain/deployments.base-sepolia.json` and `deployments.polygon-amoy.json`.
+1. Open SettlementOS `chain/deployments.base-sepolia.json`, `deployments.polygon-amoy.json`, and (when present) `deployments.fortel2-sepolia.json`.
 2. Copy **public addresses only** into `src/config/address-book.ts`.
 3. Never copy private keys into this repository.
 4. Redeploy this site.
 
-Contract addresses change on redeploy; entity/operator wallets are typically reused.
+Contract addresses change on redeploy; entity/operator wallets are typically reused. ForteL2 address-book rows stay empty until SettlementOS completes its first deploy on chain 852.
 
 ## Stack
 

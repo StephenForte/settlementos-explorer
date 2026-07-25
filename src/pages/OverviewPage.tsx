@@ -17,6 +17,7 @@ import {
 } from '../config/networks'
 import { BalanceChips } from '../components/BalanceChips'
 import { CopyButton } from '../components/CopyButton'
+import { ExplorerLink } from '../components/ExplorerLink'
 import { RoleBadge } from '../components/RoleBadge'
 import { useNetworkParam } from '../hooks/useNetworkParam'
 
@@ -112,7 +113,19 @@ export function OverviewPage() {
         </p>
       </section>
 
-      {filtered.length === 0 ? (
+      {entries.length === 0 ? (
+        <section className="section">
+          <p className="muted">
+            No address book entries for {NETWORKS[networkId].name} yet. After
+            SettlementOS deploys, copy public addresses from{' '}
+            <span className="mono">
+              chain/deployments.{networkId}.json
+            </span>{' '}
+            into{' '}
+            <span className="mono">src/config/address-book.ts</span>.
+          </p>
+        </section>
+      ) : filtered.length === 0 ? (
         <section className="section">
           <p className="muted">No addresses match “{query.trim()}”.</p>
         </section>
@@ -141,8 +154,8 @@ export function OverviewPage() {
       <section className="section">
         <h2>Entities across networks</h2>
         <p className="muted">
-          One entity, two wallets — follow the USD→JPY path from Base Sepolia
-          escrow to Amoy payout.
+          One entity, one wallet per live network — follow settlement paths
+          across Base Sepolia, ForteL2, and Polygon Amoy.
         </p>
         <div className="entity-links">
           {ENTITIES.map((entity) => (
@@ -205,13 +218,11 @@ function AddressDirectoryRow({
         <div className="address-row-meta">
           <span className="mono">{truncateAddress(entry.address)}</span>
           <CopyButton text={entry.address} />
-          <a
-            href={explorerAddressUrl(networkId, entry.address)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {NETWORKS[networkId].explorerName} ↗
-          </a>
+          {NETWORKS[networkId].explorerName ? (
+            <ExplorerLink href={explorerAddressUrl(networkId, entry.address)}>
+              {NETWORKS[networkId].explorerName} ↗
+            </ExplorerLink>
+          ) : null}
           {entry.entityId ? (
             <Link to={`/entity/${entry.entityId}`}>Entity page</Link>
           ) : null}
