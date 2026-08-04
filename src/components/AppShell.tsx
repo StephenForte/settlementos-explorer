@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router'
 import { NETWORKS } from '../config/networks'
 import { useNetworkParam } from '../hooks/useNetworkParam'
 

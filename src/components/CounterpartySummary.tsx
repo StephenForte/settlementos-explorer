@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { counterpartySummary, onlyTransfers, type TimelineItem } from '../chain/transfers'
 import { truncateAddress } from '../config/address-book'
 import type { NetworkId } from '../config/networks'

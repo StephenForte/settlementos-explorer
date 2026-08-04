@@ -13,7 +13,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { getBalances, type AddressBalances } from '../chain/balances'
 import {
   aggregateFlows,

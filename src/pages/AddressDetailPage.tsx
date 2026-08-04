@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 import { isAddress } from 'viem'
 import { getBalances } from '../chain/balances'
 import { getTransfers } from '../chain/transfers'
