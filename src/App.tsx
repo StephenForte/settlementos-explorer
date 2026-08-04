@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { AddressDetailPage } from './pages/AddressDetailPage'
 import { EntityPage } from './pages/EntityPage'
