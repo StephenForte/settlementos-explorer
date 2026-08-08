@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ENTITIES,
   PAYMENT_SETTLEMENT_ADDRESS,
+  TOKENIZED_MMF_ADDRESS,
   filterAddressEntries,
   getAddressesForNetwork,
   getEntity,
@@ -53,8 +54,12 @@ describe('lookupAddress', () => {
 })
 
 describe('tokens and entities', () => {
-  it('exposes mock tokens with correct decimals on both networks', () => {
-    for (const networkId of ['base-sepolia', 'polygon-amoy'] as const) {
+  it('exposes mock tokens with correct decimals on all networks', () => {
+    for (const networkId of [
+      'base-sepolia',
+      'polygon-amoy',
+      'fortel2-sepolia',
+    ] as const) {
       const tokens = getTokens(networkId)
       expect(tokens.map((t) => t.symbol).sort()).toEqual([
         'mockJPY',
@@ -81,8 +86,8 @@ describe('tokens and entities', () => {
     expect(getEntity('ent_tokyo_supplier')?.displayName).toBe('Tokyo Trading KK')
 
     const wallets = getEntityWallets('ent_acme_us')
-    expect(wallets).toHaveLength(2)
-    expect(new Set(wallets.map((w) => w.networkId)).size).toBe(2)
+    expect(wallets).toHaveLength(3)
+    expect(new Set(wallets.map((w) => w.networkId)).size).toBe(3)
     expect(wallets[0]!.address.toLowerCase()).not.toBe(
       wallets[1]!.address.toLowerCase(),
     )
@@ -90,9 +95,11 @@ describe('tokens and entities', () => {
 
   it('groups roles for the directory', () => {
     expect(roleGroup('escrow-contract')).toBe('Contracts')
+    expect(roleGroup('mmf-contract')).toBe('Contracts')
     expect(roleGroup('operator')).toBe('Platform')
     expect(roleGroup('entity')).toBe('Entities')
     expect(roleLabel('treasury')).toBe('Treasury')
+    expect(roleLabel('mmf-contract')).toBe('Tokenized MMF')
   })
 
   it('lists known addresses per network without private keys', () => {
@@ -134,5 +141,85 @@ describe('tokens and entities', () => {
     expect(getEscrowAddress('polygon-amoy')?.toLowerCase()).toBe(
       PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
     )
+    expect(getEscrowAddress('fortel2-sepolia')?.toLowerCase()).toBe(
+      PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
+    )
+  })
+})
+
+describe('fortel2-sepolia address book', () => {
+  const EXPECTED: Record<string, { role: string; label: string }> = {
+    '0x9d8b8b7c476ab02306046f3da719d380fa0456aa': {
+      role: 'escrow-contract',
+      label: 'PaymentSettlement',
+    },
+    [TOKENIZED_MMF_ADDRESS.toLowerCase()]: {
+      role: 'mmf-contract',
+      label: 'TokenizedMMF',
+    },
+    '0x2066738d535681d28d0841cc2503c1c531d4d6aa': {
+      role: 'token-contract',
+      label: 'mockUSDC',
+    },
+    '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63': {
+      role: 'token-contract',
+      label: 'mockJPY',
+    },
+    '0x0b6fa033c034d694e876b56f2dd8377a2be5691d': {
+      role: 'token-contract',
+      label: 'mockSGD',
+    },
+    '0x5128889f20ec13e0be38b2bebc568594159b652d': {
+      role: 'operator',
+      label: 'Operator',
+    },
+    '0x1e4ee7a078bd40d1982df1978c046f8cd0d1d3aa': {
+      role: 'treasury',
+      label: 'Treasury',
+    },
+    '0xf7842ac33aff3dd3a6b195dd366e7730771ebe5d': {
+      role: 'entity',
+      label: 'ACME US Inc',
+    },
+    '0x9e024aa6dc77d4cab4c0ad5324ec2b2af43dc116': {
+      role: 'entity',
+      label: 'Tokyo Trading KK',
+    },
+    '0x15ceb06dae813d2223992c7a40ca0f1f6678b5b0': {
+      role: 'entity',
+      label: 'Singapore Imports Pte Ltd',
+    },
+    '0xaed29ca4b33504302bda683b99072129432d7797': {
+      role: 'entity',
+      label: 'Osaka Parts Co',
+    },
+  }
+
+  it('lists exactly eleven verified public addresses', () => {
+    const fortel2 = getAddressesForNetwork('fortel2-sepolia')
+    expect(fortel2).toHaveLength(11)
+
+    for (const entry of fortel2) {
+      const expected = EXPECTED[entry.address.toLowerCase()]
+      expect(expected, entry.address).toBeDefined()
+      expect(entry.role).toBe(expected!.role)
+      expect(entry.label).toBe(expected!.label)
+    }
+
+    expect(Object.keys(EXPECTED)).toHaveLength(11)
+  })
+
+  it('keeps TokenizedMMF and ent_osaka_parts distinct despite shared 0xAEd29 prefix', () => {
+    const osakaAddress = '0xAEd29CA4b33504302bda683B99072129432D7797'
+    expect(TOKENIZED_MMF_ADDRESS.toLowerCase()).not.toBe(osakaAddress.toLowerCase())
+    expect(TOKENIZED_MMF_ADDRESS.slice(0, 7).toLowerCase()).toBe('0xaed29')
+    expect(osakaAddress.slice(0, 7).toLowerCase()).toBe('0xaed29')
+
+    const mmf = lookupAddress('fortel2-sepolia', TOKENIZED_MMF_ADDRESS)
+    const osaka = lookupAddress('fortel2-sepolia', osakaAddress)
+    expect(mmf?.role).toBe('mmf-contract')
+    expect(mmf?.label).toBe('TokenizedMMF')
+    expect(osaka?.role).toBe('entity')
+    expect(osaka?.entityId).toBe('ent_osaka_parts')
   })
 })

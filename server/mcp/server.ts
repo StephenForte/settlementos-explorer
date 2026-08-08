@@ -27,6 +27,7 @@ import { textJson, toolError, toJsonSafe } from './json.ts'
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 const ROLES = [
   'escrow-contract',
+  'mmf-contract',
   'token-contract',
   'operator',
   'treasury',
