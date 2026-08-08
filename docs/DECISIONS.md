@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D16`.** `D15` is OPEN below, awaiting the F6i handoff.
+**Next free identifier: `D16`.**
 
 ---
 
@@ -269,13 +269,24 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   than it looks.
 
 ### D15: Polygon Amoy's replacement RPC endpoint
-- Status: **OPEN** — evidence gathered, choice pending the F6i handoff
+- Status: **APPROVED 2026-08-08** — `https://polygon-amoy.drpc.org` (F6i, #24)
 - Type: design-choice
 - Date: 2026-08-08
 - Source: F6i / issue #17
-- Detail: `https://rpc-amoy.polygon.technology` — the `rpcUrl` on `main` — does not
-  resolve (`ENOTFOUND`, 3/3 attempts; `dig` returns nothing), so every Amoy feature
-  is dead for all users. Candidates measured from the ForteL2 Mac on 2026-08-08:
+- Detail: `https://rpc-amoy.polygon.technology` — the `rpcUrl` previously on `main` —
+  does not resolve (`ENOTFOUND`, 3/3 attempts; `dig` returns nothing).
+
+  > **Correction (2026-08-08, planner error).** This entry and issue #17 originally
+  > claimed the dead host meant "every Amoy feature is dead for all users." **That was
+  > wrong**, and the F6i handoff caught it. `src/lib/clients.ts` builds every client
+  > through viem's `fallback()` transport, and `RPC_URLS['polygon-amoy']` already
+  > listed `polygon-amoy.drpc.org` **first**, with the dead host third and simply
+  > skipped — so app reads were already being served. The real impact was narrower:
+  > the F6h liveness suite reads `NETWORKS[id].rpcUrl` **directly**, so Amoy could not
+  > be verified, and the config disagreed with what the app actually used. Recorded
+  > rather than silently edited, because the wrong claim shaped the dispatch.
+
+  Candidates measured from the ForteL2 Mac on 2026-08-08:
 
   | Endpoint | chainId | getCode | eth_call | **getLogs @ 2000 blocks** | latency |
   |---|---|---|---|---|---|
@@ -292,6 +303,24 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   so a rejecting endpoint yields an **empty transfer list rather than an error** —
   it cannot be caught by loading the app and seeing whether it looks right.
 
-  Two candidates qualify. The choice, and whatever is known about its rate limits
-  and terms, comes from the F6i handoff; this entry flips to APPROVED then.
-  **Workers must not act on this entry while it reads OPEN.**
+  **Chosen: `https://polygon-amoy.drpc.org`**, over publicnode on lower measured
+  latency and because it was already the app's primary Amoy URL in
+  `src/lib/clients.ts` — so `NETWORKS`, the fallback list, the liveness suite and the
+  env default now all agree, which they did not before.
+
+  **Free-tier limits, from the F6i handoff:** ~120k CU/min per IP (~100 `eth_call`/s),
+  degrading to ~50.4k under load; log responses capped at 10k entries; batches ≤3;
+  filter/trace/debug disabled; 2s max timeout. The monthly CU budget is account-keyed
+  — the keyless public URL is "always free" but still IP-rate-limited. publicnode
+  publishes no numeric limits (fair-use, 429). These matter because D14 treats 429 and
+  the `-32005` rate-limit code as **skip**, so throttling degrades the liveness suite
+  rather than reddening CI.
+
+  An env override (`VITE_POLYGON_AMOY_RPC_URL` / `POLYGON_AMOY_RPC_URL`) ships with
+  it, matching the ForteL2 pattern, so a deployment can move without a code change.
+
+  **Accepted residual risk:** a single public default can die again, exactly as this
+  one did. The `fallback()` list in `src/lib/clients.ts` already softens that for app
+  reads — but **not** for the liveness suite, which deliberately reads the configured
+  URL so it tests what ships. F6j (user-configurable RPC, #17) remains the durable
+  product fix, though less urgently than issue #17 originally implied.
