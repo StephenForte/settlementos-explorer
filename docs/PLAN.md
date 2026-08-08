@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `ec2f9dc` | after #25. This row previously read `e5b5e13` — a docs PR cannot record its own merge SHA, so §0 is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting this cell. |
-| Test suite | **110 total** — `110 passed / 0 skipped` on the ForteL2 host, `109 passed / 1 skipped` anywhere else | `npx vitest run` on `e5b5e13`; **all three chain blocks live** since #24 |
+| `main` | `b58b165` | after #26 and #27. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **125 total** — `125 passed / 0 skipped` on the ForteL2 host, `124 passed / 1 skipped` anywhere else | `npm test` on `b58b165` in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 34ms, Base 1224ms, Amoy 5029ms, real `eth_getCode` |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
@@ -34,6 +34,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6k — D13/D14 posture guards | **Done** | #20 → `0e891c3`; all three mutations re-run by the reviewer and each turns its guard red |
 | F6l — D14 past the probe + timeout budget | **Done** | #22 → `db3bd92`; mid-run 429/-32005 skip, HTTP 500 and drift still fail; widening the catch turns 4 tests red |
 | F6i — replace dead Amoy rpcUrl | **Done** | #24 → `e5b5e13`; dRPC. Amoy block flipped skip → pass **without touching the test file**, 10 rows live. D15 |
+| F6j — user-configurable RPC | **Done** | #27 → `b58b165`; override layers **above** `NETWORKS` so the liveness suite still verifies what ships. Invalidation mutation re-run by the reviewer: dropping `invalidatePublicClient` turns the no-reload test red. D16 |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -124,17 +125,18 @@ F6f  entity wallet ownership gap          ✅ closed 2026-08-08 — issue #11
 F6g  broken RPC fails, not skips          ✅ merged #15 (D13)
 F6h  Base + Amoy liveness                 ✅ merged #18 (D14)
 F6i  replace dead Amoy rpcUrl             ✅ merged #24 (D15)
-F6j  user-configurable RPC on failure     📤 dispatched 2026-08-08 — issue #17
-                                             D16 · strongest · solo · closes #17
+F6j  user-configurable RPC on failure     ✅ merged #27 (D16) — closed issue #17
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
-F6m  Patchhog reports nothing readable    📋 open — D17
-F6n  (next free identifier)
+F6m  Patchhog reports nothing readable    📋 open — D17, waiting on the dashboard
+F6n  cache write from a superseded epoch  📤 dispatched 2026-08-08
+                                             D18 (optional) · strongest · after #27
+F6o  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6n`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6o`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
@@ -171,11 +173,21 @@ Ownership is what keeps parallel agents from colliding. State it per task.
 | `docs/PLAN.md`, `docs/DECISIONS.md` | **planner only** | workers never edit these |
 | `server/mcp/server.ts` `ROLES` | whoever adds a role | append-only enum |
 | `.github/workflows/**` | CI tasks | actions pinned to SHAs — keep them pinned |
+| `src/lib/rpc-overrides.ts`, `src/lib/clients.ts` | RPC-resolution tasks | override precedence + client cache; **must stay above `NETWORKS`** (D16) |
+| `src/lib/cache.ts` | F6n | epoch guard in flight; do not take it in parallel |
 
 **Append-only shared files that will conflict anyway:** `DECISIONS.md` (every
 worker appends at the end), and the `ROLES` array in `server/mcp/server.ts`.
 Expect a trailing-line conflict on both and resolve it in seconds rather than
 being surprised by it.
+
+**Scope a component together with its call sites.** F6j's allowlist named
+`src/components/BalanceChips.tsx` but not the pages that render it. Adding a required
+prop forces every caller to change, so the worker had to touch
+`AddressDetailPage.tsx`, `EntityPage.tsx` and `RelationshipGraph.tsx` to finish the
+task — correctly disclosed, but off-allowlist. **That was a dispatch defect, not scope
+creep.** When a task changes a component's props, list its callers in the allowlist or
+say explicitly that wiring them is in scope.
 
 ---
 
@@ -220,33 +232,53 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ## 4. Integration order and conflict hot zones
 
 ```
-F6g ──✅ merged #15   F6h ──✅ merged #18
-F6k ──┐  (test file)
-F6i ──┼── F6i and F6k both touch nothing the other does; F6j follows F6i
-F6j ──┘
+F6g ──✅ #15   F6h ──✅ #18   F6k ──✅ #20   F6l ──✅ #22
+F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n  📤 in flight  (src/lib/cache.ts)
+F6m  📋 blocked on the Patchhog dashboard, not on any task
 ```
+
+**Nothing is parallel right now.** F6n is the only task in flight and it owns
+`src/lib/cache.ts` alone. The next task after it can run beside it only if it avoids
+`cache.ts` and the RPC-resolution files — `clients.ts` and `rpc-overrides.ts` are
+adjacent enough to F6n's blast radius that a change there wants to be serialized.
 
 **F6i and F6h interact usefully:** once F6i replaces the dead Amoy endpoint, the
 F6h suite's Amoy block flips from skip to pass on its own. That is a free
 confirmation that F6i worked, rather than a claim — check for it after merging F6i.
 
 **`src/config/address-book.chain.test.ts` is a serialization point.** F6h, F6k and
-F6l all own it, so they run one at a time — F6k landed as #20, and F6l branches
-from `main` after it. F6i owns `src/config/networks.ts` and overlaps with none of
-them, so it can run in parallel with any. F6j should follow F6i rather than run
-beside it — both change how an RPC URL is resolved.
+F6l all own it, so they ran one at a time. That constraint is **currently discharged** —
+no task in flight owns the file, and F6j deliberately did not touch it, which the
+reviewer confirmed against the merged diff. It becomes live again the moment two tasks
+need chain-test changes.
 
 **F6i and F6l have both landed** (#24, #22). Their predicted interaction happened
 as recorded: Amoy flipped from skipped to passing, so the healthy skip counts each
 dropped by one. **The ForteL2 host now reports `0 skipped` — all three chain blocks
 run live.** Off-host, only ForteL2 skips.
 
-**Open design question, raised by F6k and deliberately not decided.** The
-`PROBE_OPTIONS` map lives in the chain test file because `probeRpcUrl` is test-only
-today. If probing ever becomes product behaviour — which F6j could make true, since
-a user-supplied RPC needs validating before use — the per-network posture belongs in
-`src/config/networks.ts` instead, and moving it needs a decision entry. Not forced
-now; recorded so whoever picks up F6j sees it rather than rediscovering it.
+**The `PROBE_OPTIONS` question is answered, for now.** F6k raised it: if probing ever
+became product behaviour, the per-network D13/D14 posture would belong in
+`src/config/networks.ts` rather than the chain test file. F6j **declined to make probing
+product behaviour** — a user-supplied endpoint is validated by scheme only, not probed —
+so `PROBE_OPTIONS` and `probeRpcUrl` stay in `address-book.chain.test.ts`. Recorded in
+D16. The question reopens if anything ever needs to health-check an endpoint before use.
+
+**F6j's residual risks, carried deliberately (D16, #27):**
+
+- **An override replaces the whole URL list for that network** — no public fallbacks
+  while one is set. Intended, for users whose network position cannot reach the public
+  endpoints at all. The cost: an override that later dies has nothing behind it and must
+  be cleared by hand. Do not "fix" this by merging the override into the fallback list
+  without a decision entry; it would defeat the case it exists for.
+- **The Overview directory rows have no override control** — only the address-detail,
+  entity and graph panels do. A user whose first stop is Overview sees `unavailable`
+  with no affordance. Minor; folded into F6n's notes rather than given its own task.
+- **F6j made a latent `cache.ts` flaw reachable** — a fetch already in flight when
+  `cacheClear()` runs still writes its result, and can overwrite a newer good one
+  (last-writer-wins). Verified with a red probe during review; **F6n** fixes it in
+  `cache.ts`. The `invalidatePublicClient` path in `clients.ts` is correct and is *not*
+  the defect site, despite being where the bot reported it.
 
 #7 (`ef4991b`) and F6d (`c112874`) have both landed, so the `--mute`
 serialization constraint is fully discharged and **no task currently owns
