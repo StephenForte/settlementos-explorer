@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D12`.**
+**Next free identifier: `D13`.**
 
 ---
 
@@ -167,3 +167,26 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   healthy — read the skip reason instead. The risk this buys down is a wrong
   address shipping silently, which the existing `EXPECTED`-map test structurally
   cannot catch (see PLAN §6 trap 2).
+
+### D12: entity wallet ownership is confirmed against the deploy manifest, and that check is not automatable
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-08
+- Source: F6f / issue #11
+- Detail: The four ForteL2 entity wallets and the treasury were unverifiable by
+  any chain query — they are EOAs, and three had never transacted, so nothing
+  on-chain links an address to a company. The authoritative mapping is
+  `chain/deployments.<network>.json` in settlementos, written by
+  `scripts/deploy-testnet.mjs`, which generates each wallet with
+  `generatePrivateKey()` and reuses it across re-runs. Read on the ForteL2 host on
+  2026-08-08: **all five addresses matched the address book exactly**, and the
+  script's `entityGasTarget: parseEther("0.0002")` independently explains the
+  identical dust balances observed on chain.
+  Because the keys are random, there is **no re-derivation path** — that file is
+  the only source. Because it contains those private keys it is gitignored and
+  must stay that way: never commit it, never copy its contents into this repo, and
+  read only `.address` fields from it.
+  Consequence: this verification **cannot be encoded as a test**, unlike D11's
+  chain check. It expires on any redeploy that regenerates the wallets, and the
+  only way to re-confirm is to re-read the manifest on the deploying host. Recorded
+  in `PLAN.md` §0 with the date it was true.
