@@ -83,7 +83,8 @@ script, not a typo, since a mistyped address would hold nothing — but they hav
 **never sent a transaction**, so nothing on-chain ties them to those companies.
 Treat them as address-shape-and-funding confirmed, ownership unconfirmed. This
 is stronger than the previous "not independently verified" and weaker than
-verified; **F6e does not close the gap either**, and no task currently does.
+verified; **F6e does not close the gap either** — see **F6f** / issue #11, which
+records why no chain query can.
 
 Five of the eleven rows (escrow, three tokens, operator) are **inherited
 constants** shared with Base Sepolia and Polygon Amoy, not ForteL2-specific
@@ -103,12 +104,20 @@ F6b  design system (docs/DESIGN.md)       ✅ merged #6
 F6c  chain-852 liveness check             ✅ verified 2026-08-08 — issue #8
  └── F6e  encode it as an opt-in test     🔄 dispatched (D11)
 F6d  drop dead --ash token                🔄 dispatched (D10 APPROVED)
-F6f  (next free identifier)
+F6f  entity wallet ownership gap          ⏸️  not dispatchable — issue #11
+F6g  (next free identifier)
 ```
 
-**Next free identifier: `F6f`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6g`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
+
+**F6f is deliberately not dispatchable.** Ownership of the three zero-nonce
+entity wallets cannot be settled by any chain query — F6c couldn't, and F6e
+can't, since a green F6e run is fully compatible with all three addresses being
+wrong. It needs an out-of-band artifact from settlementos (deploy manifest or
+funding-script records). It is tracked so it is not mistaken for verified, and
+left undispatched so it is not mistaken for actionable.
 
 **F6d and F6e may run in parallel** — no file overlap (`src/index.css` vs a new
 test file). F6e must run **on the ForteL2 host**; anywhere else only its skip
