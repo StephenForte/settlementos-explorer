@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `d251569` | after #16 and #18 |
-| Test suite | **103 total** — `102 passed / 1 skipped` on the ForteL2 host, `101 passed / 2 skipped` anywhere else | `npx vitest run` on `d251569`, both paths exercised; CI log confirms Base **runs** there |
+| `main` | `0e891c3` | after #19 and #20 |
+| Test suite | **105 total** — `104 passed / 1 skipped` on the ForteL2 host, `103 passed / 2 skipped` anywhere else | `npx vitest run` on `0e891c3`, both paths exercised; CI log confirms Base **runs** there |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
@@ -31,6 +31,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6c-test — chain-852 liveness test | **Done** | #13 → `d03bff9`; proved it fails on a consistently-corrupted address that the `EXPECTED` map accepts |
 | F6g — broken RPC fails, not skips | **Done** | #15 → `7673572`; end-to-end: error object / HTTP 500 / bad result / wrong chain all fail, closed port skips. D13 |
 | F6h — Base + Amoy liveness | **Done** | #18 → `d251569`; Base **runs in CI** (1490ms of real `eth_getCode`) and fails on injected drift. Amoy skips — its `rpcUrl` is dead (#17). D14 |
+| F6k — D13/D14 posture guards | **Done** | #20 → `0e891c3`; all three mutations re-run by the reviewer and each turns its guard red |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -122,13 +123,14 @@ F6g  broken RPC fails, not skips          ✅ merged #15 (D13)
 F6h  Base + Amoy liveness                 ✅ merged #18 (D14)
 F6i  replace dead Amoy rpcUrl             📋 open — issue #17 (D15 reserved)
 F6j  user-configurable RPC on failure     📋 open — issue #17
-F6k  make the D13 guard test real         📋 open — from the #18 review
-F6l  (next free identifier)
+F6k  make the D13 guard test real         ✅ merged #20
+F6l  D14 availability past the probe       📋 dispatched — 2 verified bugs
+F6m  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6l`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6m`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
@@ -224,9 +226,18 @@ F6j ──┘
 F6h suite's Amoy block flips from skip to pass on its own. That is a free
 confirmation that F6i worked, rather than a claim — check for it after merging F6i.
 
-**F6k owns `src/config/address-book.chain.test.ts`.** F6i owns
-`src/config/networks.ts`. They do not overlap and can run in parallel. F6j should
-follow F6i rather than run beside it — both touch how an RPC URL is resolved.
+**`src/config/address-book.chain.test.ts` is a serialization point.** F6h, F6k and
+F6l all own it, so they run one at a time — F6k landed as #20, and F6l branches
+from `main` after it. F6i owns `src/config/networks.ts` and overlaps with none of
+them, so it can run in parallel with any. F6j should follow F6i rather than run
+beside it — both change how an RPC URL is resolved.
+
+**Open design question, raised by F6k and deliberately not decided.** The
+`PROBE_OPTIONS` map lives in the chain test file because `probeRpcUrl` is test-only
+today. If probing ever becomes product behaviour — which F6j could make true, since
+a user-supplied RPC needs validating before use — the per-network posture belongs in
+`src/config/networks.ts` instead, and moving it needs a decision entry. Not forced
+now; recorded so whoever picks up F6j sees it rather than rediscovering it.
 
 #7 (`ef4991b`) and F6d (`c112874`) have both landed, so the `--mute`
 serialization constraint is fully discharged and **no task currently owns
@@ -288,10 +299,10 @@ Each of these has already cost time.
    **Check the exit code, not just the empty output.** Working form:
    `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
    from the repo root.
-9. **Skip counts are per-network now; the number alone means nothing.** As of #18
-   the suite is 103 tests across **three** chain blocks. Healthy states:
-   `102 passed / 1 skipped` on the ForteL2 host (Amoy skips — its endpoint is
-   dead, #17), and `101 passed / 2 skipped` anywhere else (ForteL2 and Amoy).
+9. **Skip counts are per-network now; the number alone means nothing.** As of #20
+   the suite is 105 tests across **three** chain blocks. Healthy states:
+   `104 passed / 1 skipped` on the ForteL2 host (Amoy skips — its endpoint is
+   dead, #17), and `103 passed / 2 skipped` anywhere else (ForteL2 and Amoy).
    **Base Sepolia must never be in the skipped list** — it is the only block that
    runs in CI, so if Base starts skipping, automated drift detection is silently
    gone. Read the `describe` titles, not the count. Since #15 a skip also means
