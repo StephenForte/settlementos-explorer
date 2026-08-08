@@ -6,7 +6,7 @@ import { NETWORKS, type NetworkId } from './networks'
 import { getEnv } from '../lib/env'
 
 /**
- * Chain liveness checks against live RPCs (D11 / D13 / D14-pending).
+ * Chain liveness checks against live RPCs (D11 / D13 / D14).
  *
  * ForteL2 (private sequencer): skip only on transport failure; a reachable-
  * but-broken endpoint fails (D13).
@@ -40,9 +40,29 @@ const FORTEL2_RPC_URL =
 const PROBE_TIMEOUT_MS = 1_500
 /** Public eth_getCode can be slow; stay well above the 1.5s probe. */
 const PUBLIC_RPC_TIMEOUT_MS = 15_000
-const PUBLIC_SUITE_TIMEOUT_MS = 120_000
+/** Public networks share a 10-row address book (must match live block expectations). */
+const PUBLIC_ROWS_PER_NETWORK = 10
+/**
+ * Suite budget must cover eth_chainId + one eth_getCode per row at the per-request
+ * timeout, plus a small margin for assertion overhead — not an independent literal.
+ */
+const PUBLIC_SUITE_TIMEOUT_MARGIN_MS = 15_000
+const PUBLIC_SUITE_TIMEOUT_MS =
+  PUBLIC_RPC_TIMEOUT_MS * (PUBLIC_ROWS_PER_NETWORK + 1) +
+  PUBLIC_SUITE_TIMEOUT_MARGIN_MS
 
 type JsonRpcSuccess = { jsonrpc: string; id: number; result: string }
+
+/**
+ * Provider refusal/throttle after the probe (D14). Thrown only from availability-
+ * aware `jsonRpc` calls; public live blocks catch this and `skip()`, nothing else.
+ */
+class RpcUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RpcUnavailableError'
+  }
+}
 
 type RpcProbeOutcome =
   | { kind: 'reachable' }
@@ -101,6 +121,7 @@ async function jsonRpc(
   method: string,
   params: unknown[],
   timeoutMs = 5_000,
+  availabilityAware = false,
 ): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -112,13 +133,26 @@ async function jsonRpc(
       signal: controller.signal,
     })
     if (!res.ok) {
+      if (availabilityAware && AVAILABILITY_HTTP_STATUSES.has(res.status)) {
+        throw new RpcUnavailableError(
+          `RPC HTTP ${res.status} for ${method} (provider unavailable)`,
+        )
+      }
       throw new Error(`RPC HTTP ${res.status} for ${method}`)
     }
     const body = (await res.json()) as JsonRpcSuccess & {
-      error?: { message: string }
+      error?: { code?: unknown; message?: string }
     }
     if (body.error) {
-      throw new Error(`RPC error for ${method}: ${body.error.message}`)
+      if (availabilityAware && isRateLimitRpcError(body.error)) {
+        const detail = body.error.message ?? `code ${String(body.error.code)}`
+        throw new RpcUnavailableError(
+          `RPC rate-limited for ${method}: ${detail}`,
+        )
+      }
+      throw new Error(
+        `RPC error for ${method}: ${body.error.message ?? 'unknown error'}`,
+      )
     }
     if (typeof body.result !== 'string') {
       throw new Error(`RPC ${method}: missing string result`)
@@ -231,9 +265,18 @@ async function assertAddressBookLiveness(opts: {
   expectedChainId: number
   expectedRowCount: number
   requestTimeoutMs?: number
+  /** Public RPCs only — mid-run throttle/refusal → RpcUnavailableError (D14). */
+  availabilityAware?: boolean
 }): Promise<void> {
   const timeoutMs = opts.requestTimeoutMs ?? 5_000
-  const chainIdHex = await jsonRpc(opts.rpcUrl, 'eth_chainId', [], timeoutMs)
+  const availabilityAware = opts.availabilityAware === true
+  const chainIdHex = await jsonRpc(
+    opts.rpcUrl,
+    'eth_chainId',
+    [],
+    timeoutMs,
+    availabilityAware,
+  )
   const chainId = Number.parseInt(chainIdHex, 16)
   expect(chainId, `eth_chainId was ${chainIdHex}`).toBe(opts.expectedChainId)
 
@@ -247,6 +290,7 @@ async function assertAddressBookLiveness(opts: {
       'eth_getCode',
       [entry.address, 'latest'],
       timeoutMs,
+      availabilityAware,
     )
     const tag = `${entry.label} (${entry.role}) ${entry.address}`
 
@@ -277,8 +321,12 @@ async function evaluateLivenessBlock(opts: {
   probeTimeoutMs?: number
   requestTimeoutMs?: number
 }): Promise<'passed' | 'skipped'> {
+  const probeOptions = PROBE_OPTIONS[opts.networkId]
+  const availabilityAware =
+    'availabilityAware' in probeOptions &&
+    probeOptions.availabilityAware === true
   const outcome = await probeRpcUrl(opts.rpcUrl, {
-    ...PROBE_OPTIONS[opts.networkId],
+    ...probeOptions,
     timeoutMs: opts.probeTimeoutMs,
   })
   const gate = livenessGate(outcome)
@@ -290,13 +338,20 @@ async function evaluateLivenessBlock(opts: {
         : 'RPC probe failed'
     throw new Error(message)
   }
-  await assertAddressBookLiveness({
-    rpcUrl: opts.rpcUrl,
-    networkId: opts.networkId,
-    expectedChainId: opts.expectedChainId,
-    expectedRowCount: opts.expectedRowCount,
-    requestTimeoutMs: opts.requestTimeoutMs,
-  })
+  try {
+    await assertAddressBookLiveness({
+      rpcUrl: opts.rpcUrl,
+      networkId: opts.networkId,
+      expectedChainId: opts.expectedChainId,
+      expectedRowCount: opts.expectedRowCount,
+      requestTimeoutMs: opts.requestTimeoutMs,
+      availabilityAware,
+    })
+  } catch (err) {
+    // Narrow catch — AssertionError / wrong-chain / plain Error must still fail.
+    if (err instanceof RpcUnavailableError) return 'skipped'
+    throw err
+  }
   return 'passed'
 }
 
@@ -346,15 +401,24 @@ if (baseProbe.kind === 'broken') {
     baseProbe.kind === 'unreachable' || baseProbe.kind === 'unavailable',
   )(`Base Sepolia chain-84532 liveness (${BASE_SEPOLIA_RPC_URL})`, () => {
     it(
-      'asserts chain 84532 and ADDRESS_BOOK bytecode shape for all 10 rows',
-      async () => {
-        await assertAddressBookLiveness({
-          rpcUrl: BASE_SEPOLIA_RPC_URL,
-          networkId: 'base-sepolia',
-          expectedChainId: 84532,
-          expectedRowCount: 10,
-          requestTimeoutMs: PUBLIC_RPC_TIMEOUT_MS,
-        })
+      `asserts chain 84532 and ADDRESS_BOOK bytecode shape for all ${PUBLIC_ROWS_PER_NETWORK} rows`,
+      async (ctx) => {
+        try {
+          await assertAddressBookLiveness({
+            rpcUrl: BASE_SEPOLIA_RPC_URL,
+            networkId: 'base-sepolia',
+            expectedChainId: 84532,
+            expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+            requestTimeoutMs: PUBLIC_RPC_TIMEOUT_MS,
+            // Public block — D14; ForteL2 never passes this flag.
+            availabilityAware: true,
+          })
+        } catch (err) {
+          if (err instanceof RpcUnavailableError) {
+            return ctx.skip()
+          }
+          throw err
+        }
       },
       PUBLIC_SUITE_TIMEOUT_MS,
     )
@@ -378,15 +442,24 @@ if (amoyProbe.kind === 'broken') {
     amoyProbe.kind === 'unreachable' || amoyProbe.kind === 'unavailable',
   )(`Polygon Amoy chain-80002 liveness (${POLYGON_AMOY_RPC_URL})`, () => {
     it(
-      'asserts chain 80002 and ADDRESS_BOOK bytecode shape for all 10 rows',
-      async () => {
-        await assertAddressBookLiveness({
-          rpcUrl: POLYGON_AMOY_RPC_URL,
-          networkId: 'polygon-amoy',
-          expectedChainId: 80002,
-          expectedRowCount: 10,
-          requestTimeoutMs: PUBLIC_RPC_TIMEOUT_MS,
-        })
+      `asserts chain 80002 and ADDRESS_BOOK bytecode shape for all ${PUBLIC_ROWS_PER_NETWORK} rows`,
+      async (ctx) => {
+        try {
+          await assertAddressBookLiveness({
+            rpcUrl: POLYGON_AMOY_RPC_URL,
+            networkId: 'polygon-amoy',
+            expectedChainId: 80002,
+            expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+            requestTimeoutMs: PUBLIC_RPC_TIMEOUT_MS,
+            // Public block — D14; ForteL2 never passes this flag.
+            availabilityAware: true,
+          })
+        } catch (err) {
+          if (err instanceof RpcUnavailableError) {
+            return ctx.skip()
+          }
+          throw err
+        }
       },
       PUBLIC_SUITE_TIMEOUT_MS,
     )
@@ -714,8 +787,150 @@ describe('public RPC availability class (D14)', () => {
         rpcUrl: url,
         networkId: 'base-sepolia',
         expectedChainId: 84532,
-        expectedRowCount: 10,
+        expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
       }),
     ).rejects.toThrow(/expected contract bytecode/)
+  })
+
+  it('mid-run HTTP 429 → skipped (availability past the probe)', async () => {
+    let getCodeCount = 0
+    const url = await startJsonRpcStub((method) => {
+      if (method === 'eth_chainId') {
+        return { body: { jsonrpc: '2.0', id: 1, result: '0x14a34' } }
+      }
+      if (method === 'eth_getCode') {
+        getCodeCount += 1
+        if (getCodeCount === 1) {
+          return { body: { jsonrpc: '2.0', id: 1, result: '0x6080604052' } }
+        }
+        return { status: 429, body: { error: 'too many requests' } }
+      }
+      return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
+    })
+
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
+    expect(outcome.kind).toBe('reachable')
+
+    const result = await evaluateLivenessBlock({
+      rpcUrl: url,
+      networkId: 'base-sepolia',
+      expectedChainId: 84532,
+      expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+    })
+    expect(result).toBe('skipped')
+  })
+
+  it('mid-run JSON-RPC -32005 → skipped (availability past the probe)', async () => {
+    let getCodeCount = 0
+    const url = await startJsonRpcStub((method) => {
+      if (method === 'eth_chainId') {
+        return { body: { jsonrpc: '2.0', id: 1, result: '0x14a34' } }
+      }
+      if (method === 'eth_getCode') {
+        getCodeCount += 1
+        if (getCodeCount === 1) {
+          return { body: { jsonrpc: '2.0', id: 1, result: '0x6080604052' } }
+        }
+        return {
+          body: {
+            jsonrpc: '2.0',
+            id: 1,
+            error: { code: -32005, message: 'limit exceeded' },
+          },
+        }
+      }
+      return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
+    })
+
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
+    expect(outcome.kind).toBe('reachable')
+
+    const result = await evaluateLivenessBlock({
+      rpcUrl: url,
+      networkId: 'base-sepolia',
+      expectedChainId: 84532,
+      expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+    })
+    expect(result).toBe('skipped')
+  })
+
+  it('mid-run wrong bytecode shape → fail (skip path must not swallow drift)', async () => {
+    const rows = getAddressesForNetwork('base-sepolia')
+    // Escrow is row 0; trip a later contract so some getCode calls succeed first.
+    const midContract = rows.find((r) => r.role === 'token-contract')
+    expect(midContract).toBeDefined()
+
+    const url = await startJsonRpcStub((method, params) => {
+      if (method === 'eth_chainId') {
+        return { body: { jsonrpc: '2.0', id: 1, result: '0x14a34' } }
+      }
+      if (method === 'eth_getCode') {
+        const address = String(params[0] ?? '').toLowerCase()
+        if (address === midContract!.address.toLowerCase()) {
+          return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
+        }
+        const isContract = rows.some(
+          (r) =>
+            r.address.toLowerCase() === address && CONTRACT_ROLES.has(r.role),
+        )
+        return {
+          body: {
+            jsonrpc: '2.0',
+            id: 1,
+            result: isContract ? '0x6080604052' : '0x',
+          },
+        }
+      }
+      return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
+    })
+
+    await expect(
+      evaluateLivenessBlock({
+        rpcUrl: url,
+        networkId: 'base-sepolia',
+        expectedChainId: 84532,
+        expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+      }),
+    ).rejects.toThrow(/expected contract bytecode/)
+  })
+
+  it('mid-run plain HTTP 500 → fail (500 is outside availability class)', async () => {
+    let getCodeCount = 0
+    const url = await startJsonRpcStub((method) => {
+      if (method === 'eth_chainId') {
+        return { body: { jsonrpc: '2.0', id: 1, result: '0x14a34' } }
+      }
+      if (method === 'eth_getCode') {
+        getCodeCount += 1
+        if (getCodeCount === 1) {
+          return { body: { jsonrpc: '2.0', id: 1, result: '0x6080604052' } }
+        }
+        return { status: 500, body: { error: 'internal server error' } }
+      }
+      return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
+    })
+
+    await expect(
+      evaluateLivenessBlock({
+        rpcUrl: url,
+        networkId: 'base-sepolia',
+        expectedChainId: 84532,
+        expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+      }),
+    ).rejects.toThrow(/RPC HTTP 500/)
+  })
+})
+
+describe('public suite timeout budget', () => {
+  it('PUBLIC_SUITE_TIMEOUT_MS covers per-request budget for all public rows', () => {
+    expect(PUBLIC_ROWS_PER_NETWORK).toBe(
+      getAddressesForNetwork('base-sepolia').length,
+    )
+    expect(PUBLIC_ROWS_PER_NETWORK).toBe(
+      getAddressesForNetwork('polygon-amoy').length,
+    )
+    expect(PUBLIC_SUITE_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      PUBLIC_RPC_TIMEOUT_MS * (PUBLIC_ROWS_PER_NETWORK + 1),
+    )
   })
 })
