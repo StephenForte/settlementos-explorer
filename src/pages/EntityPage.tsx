@@ -78,7 +78,14 @@ function NetworkWalletPanel({
       </div>
       <p className="mono small break">{address}</p>
       {balances.status === 'ok' ? (
-        <BalanceChips balances={balances.data} />
+        <BalanceChips
+          balances={balances.data}
+          networkId={networkId}
+          onRpcOverrideChange={() => {
+            balances.retry()
+            transfers.retry()
+          }}
+        />
       ) : balances.status === 'error' ? (
         <StatusBanner tone="warn">
           Balances unavailable (RPC): {balances.error}
