@@ -26,7 +26,9 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D16`.**
+**Next free identifier: `D18`.** `D16` is assigned to **F6j** (dispatched
+2026-08-08, not yet written); `D17` is below. Take `D18` only from the plan, never
+by reading for the highest number here.
 
 ---
 
@@ -324,3 +326,57 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   reads — but **not** for the liveness suite, which deliberately reads the configured
   URL so it tests what ships. F6j (user-configurable RPC, #17) remains the durable
   product fix, though less urgently than issue #17 originally implied.
+
+### D17: Patchhog's status is not a scan result, and its findings are unrecoverable
+- Status: **OPEN** — Stephen is restoring the dashboard deployment; revisit once it answers
+- Type: scope-question
+- Date: 2026-08-08
+- Source: F6m / planner audit of PRs #5–#25
+- Detail: `docs/PLAN.md` §3 tells every worker that opening a PR triggers "CI, Semgrep,
+  Trivy, Cursor Bugbot and Patchhog." The first four are real. Patchhog, as configured
+  today, reports nothing anyone can act on.
+
+  **It cannot fail.** `patchhog/security` is a GitHub commit **status**, not a check run,
+  and there is no corresponding workflow in `.github/workflows` — the status is posted by
+  creator `StephenForte`, i.e. an external tool using a user token. Across every PR from
+  #5 to #25 it posted state `success` with a description beginning `Clean scan:`:
+
+  | PR | Description |
+  |---|---|
+  | #5, #7, #9, #10, #12, #13, #15, #16, #18–#25 | `Clean scan: 2 findings` |
+  | **#6** | **`Clean scan: 4 findings`** |
+
+  The word "Clean" and the `success` state are **independent of the findings count**. A
+  status that is `success` at 2 findings and `success` at 4 has no threshold, so it has
+  never been capable of blocking a merge. Note the count does vary with the diff (#6 was
+  the design-system PR), so the scanner was doing real work — which makes the next part
+  worse rather than better.
+
+  **The findings are unreadable, and retrospectively unrecoverable.** Every `target_url`
+  points at `patchr-eight.vercel.app`. That host is gone:
+
+  ```
+  curl -sS -D - -o /dev/null https://patchr-eight.vercel.app/
+  HTTP/2 404
+  x-vercel-error: DEPLOYMENT_NOT_FOUND
+  ```
+
+  Both at the per-scan paths and at the root, so it is a deleted deployment rather than an
+  auth gate. Roughly twenty scans' worth of findings are therefore lost, and the only
+  surviving evidence is the integer in each status description.
+
+  **Why this is recorded rather than fixed by editing §3.** Stephen owns the Patchhog
+  deployment and is restoring it, so removing it from the merge contract now would
+  discard a control that is about to come back. §3 is deliberately left intact. What is
+  *not* acceptable is the current state persisting silently — hence trap 11 in PLAN §6,
+  so a worker reading §3 does not infer coverage that is not there today.
+
+  **What resolving this looks like:** with the dashboard live, re-scan one merged PR,
+  read the 2 findings, and decide whether they are real. If they are, they become a task.
+  Then decide whether the status should be able to fail — a scanner that always reports
+  `success` is decoration, and the honest options are a failing threshold or dropping it
+  from §3.
+
+  **Smallest viable alternative considered:** delete Patchhog from §3 and stop thinking
+  about it. Rejected — the varying count says it finds something, and nobody has ever
+  looked at what.

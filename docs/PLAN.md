@@ -19,7 +19,7 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `e5b5e13` | after #22, #23 and #24 |
+| `main` | `ec2f9dc` | after #25. This row previously read `e5b5e13` — a docs PR cannot record its own merge SHA, so §0 is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting this cell. |
 | Test suite | **110 total** — `110 passed / 0 skipped` on the ForteL2 host, `109 passed / 1 skipped` anywhere else | `npx vitest run` on `e5b5e13`; **all three chain blocks live** since #24 |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
@@ -124,15 +124,17 @@ F6f  entity wallet ownership gap          ✅ closed 2026-08-08 — issue #11
 F6g  broken RPC fails, not skips          ✅ merged #15 (D13)
 F6h  Base + Amoy liveness                 ✅ merged #18 (D14)
 F6i  replace dead Amoy rpcUrl             ✅ merged #24 (D15)
-F6j  user-configurable RPC on failure     📋 open — issue #17
+F6j  user-configurable RPC on failure     📤 dispatched 2026-08-08 — issue #17
+                                             D16 · strongest · solo · closes #17
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
-F6m  (next free identifier)
+F6m  Patchhog reports nothing readable    📋 open — D17
+F6n  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6m`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6n`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
@@ -325,3 +327,15 @@ Each of these has already cost time.
    ref-scoped commands (`git show <ref>:<path>`, `git diff a...b`, `gh pr diff`);
    do writes through the GitHub API or in a throwaway clone. A `git status` check
    is not an interlock — it is true for one instant.
+
+11. **A green Patchhog status is not a scan result — it cannot fail.** `patchhog/security`
+   is a commit *status*, not a check run, and not any workflow in `.github/workflows`.
+   Across PRs #5–#25 it posted state `success` with a description beginning
+   `Clean scan:` **every single time, including "Clean scan: 4 findings" on #6** — the
+   word "Clean" and the `success` state are independent of the count. Its dashboard host
+   also returns `DEPLOYMENT_NOT_FOUND`, so no finding it ever reported has been readable.
+   §3 still lists it among the things a PR triggers, which is true but implies coverage
+   we do not currently have. Same shape as trap 4 (a green Semgrep job isn't proof it
+   ran) and trap 8 (a command that never ran reads as a clean result). **Semgrep, Trivy
+   and Cursor Bugbot are real** — all three verified as genuine check runs on #24's head.
+   See **D17** and **F6m**.
