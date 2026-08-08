@@ -19,15 +19,16 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `4c676cc` | after #7 and #9 |
-| Test suite | **88 passed / 19 files, 0 skipped** | `npx vitest run` locally on `4c676cc` |
+| `main` | `d03bff9` | after #12 and #13 |
+| Test suite | **89 total** — `89 passed / 0 skipped` on the ForteL2 host, `88 passed / 1 skipped` anywhere else | `npx vitest run` on `d03bff9`, both paths exercised |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
 | F6b — design system | **Done** | #6 → `223d452`; tokens in `src/index.css`, `docs/DESIGN.md` |
-| F6c — chain-852 liveness check | **Verified 2026-08-08** | 8 of 11 rows fully confirmed on chain 852; see below. Issue #8 |
-| F6d — drop dead `--ash` token | **Dispatched** | D10 APPROVED (drop) |
-| F6c-test — chain-852 liveness test | **Dispatched** | encodes the F6c check; D11 |
+| F6c — chain-852 liveness check | **Verified 2026-08-08** | **all 11 rows** confirmed — 6 on chain 852, 5 against the deploy manifest. Issue #8 |
+| F6f — entity wallet ownership | **Closed 2026-08-08** | `chain/deployments.fortel2-sepolia.json` matches all 4 entities + treasury. Issue #11 |
+| F6d — drop dead `--ash` token | **Done** | #12 → `c112874`; token-set and value diff vs `main` — 2 removals, 0 additions, every surviving token byte-identical |
+| F6c-test — chain-852 liveness test | **Done** | #13 → `d03bff9`; proved it fails on a consistently-corrupted address that the `EXPECTED` map accepts |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -75,16 +76,26 @@ Run from a fresh clone **on the ForteL2 host** against the local sequencer at
 | Singapore Imports Pte Ltd | entity | no bytecode, nonce 0, 0.0002 ETH |
 | Osaka Parts Co | entity | no bytecode, nonce 0, 0.0002 ETH |
 
-**What this does and does not establish.** Eight rows are fully verified: the
-five contracts hold bytecode, and Operator / Treasury / ACME are EOAs that have
-transacted on 852. The remaining three entity wallets are proven to be
-**deliberately-funded EOAs** — identical 0.0002 ETH balances indicate a funding
-script, not a typo, since a mistyped address would hold nothing — but they have
-**never sent a transaction**, so nothing on-chain ties them to those companies.
-Treat them as address-shape-and-funding confirmed, ownership unconfirmed. This
-is stronger than the previous "not independently verified" and weaker than
-verified; **F6c-test does not close the gap either** — see **F6f** / issue #11,
-which records why no chain query can.
+**What the chain query established.** Eight rows outright: the five contracts
+hold bytecode, and Operator / Treasury / ACME are EOAs that have transacted on
+852. Tokyo, Singapore and Osaka were EOAs with identical 0.0002 ETH and **nonce
+0** — deliberately funded, but with nothing on-chain tying them to those
+companies.
+
+**What closed the remaining gap (F6f, 2026-08-08).** No chain query could — the
+answer is off-chain. `scripts/deploy-testnet.mjs` in settlementos generates each
+entity wallet with `generatePrivateKey()` (random, therefore **not
+re-derivable**) and persists the `externalId → address` mapping to
+`chain/deployments.<network>.json`. That file is gitignored *because it holds the
+private keys*, so it never reaches the repo and lives only on the deploying host.
+Read on the ForteL2 Mac, **all four entity wallets and the treasury matched the
+address book exactly**. The 0.0002 ETH figure is corroborated independently: the
+script sets `entityGasTarget: parseEther("0.0002")`.
+
+That file is the *origin* of the mapping, not a copy of the address book, so this
+is genuine out-of-band confirmation rather than a second tautology. It also
+**cannot be automated** — the same private keys that make it authoritative make it
+un-committable. See **D12**.
 
 Five of the eleven rows (escrow, three tokens, operator) are **inherited
 constants** shared with Base Sepolia and Polygon Amoy, not ForteL2-specific
@@ -102,9 +113,9 @@ F6a  address book + mmf-contract role     ✅ merged #4
 F6b  design system (docs/DESIGN.md)       ✅ merged #6
  └── F6b-fix  --mute AA contrast          ✅ merged #7
 F6c  chain-852 liveness check             ✅ verified 2026-08-08 — issue #8
- └── F6c-test  encode as opt-in test      🔄 dispatched (D11)
-F6d  drop dead --ash token                🔄 dispatched (D10 APPROVED)
-F6f  entity wallet ownership gap          ⏸️  not dispatchable — issue #11
+ └── F6c-test  encode as opt-in test      ✅ merged #13
+F6d  drop dead --ash token                ✅ merged #12
+F6f  entity wallet ownership gap          ✅ closed 2026-08-08 — issue #11
 F6g  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
@@ -196,13 +207,14 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ## 4. Integration order and conflict hot zones
 
 ```
-F6d      ──┐
-F6c-test ──┼── any order (no mutual file overlap)
+F6d      ──✅ merged #12
+F6c-test ──✅ merged #13 (closed issue #8)
+F6f      ──✅ closed via the deploy manifest — issue #11
 ```
 
-#7 has landed (`ef4991b`), so the `--mute` serialization constraint is
-discharged. F6d is the only task currently touching `src/index.css`; any
-further design work must serialize behind it.
+#7 (`ef4991b`) and F6d (`c112874`) have both landed, so the `--mute`
+serialization constraint is fully discharged and **no task currently owns
+`src/index.css`** — the next design task can take it without queueing.
 
 Hot zones despite the ownership split:
 
@@ -251,6 +263,26 @@ Each of these has already cost time.
    `cfcd0e3`, byte-identical to what later became #7, because #6 merged before
    the reviewer's push landed. Before deleting any branch, diff its extra
    commits against `main` rather than assuming they're redundant.
-8. **`grep` here is ugrep.** `\{` in a pattern errors with "invalid repeat" —
-   use `grep -F`, a character class, or parse in Python. Scratchpad scripts
-   also can't import `viem`; run node from the repo root.
+8. **`grep` here is ugrep, and its errors look like clean results.** `\{` in a
+   pattern errors with "invalid repeat", and a pattern starting with `--` is
+   parsed as an option: `grep --ash file` exits **2** with "invalid option",
+   not 1 ("no matches"). Both produce no output, so a worker reading only stdout
+   reports "0 hits" from a command that never ran — this happened in the F6d
+   handoff (#12), where the claim was true but the cited evidence was void.
+   **Check the exit code, not just the empty output.** Working form:
+   `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
+   from the repo root.
+9. **`0 skipped` is no longer the health signal.** As of #13 the suite is 89
+   tests, and off the ForteL2 host one of them skips by design (D11). A run
+   reporting `88 passed / 1 skipped` is healthy; a run reporting `89 passed` means
+   you are on the host and the chain check really executed. Read *which* test
+   skipped, not the count.
+10. **Never run git write commands in a working directory an agent is using.**
+   A worker agent, the planner and the reviewer share one HEAD, index and tree.
+   On 2026-08-08 a planner `checkout -b` put a docs commit on the agent's branch,
+   a `reset --hard` orphaned the agent's commit, and an agent-side reset silently
+   reverted half of an in-progress docs edit — producing a commit that looked
+   complete but contained 2 of 5 changes. Read the shared checkout with
+   ref-scoped commands (`git show <ref>:<path>`, `git diff a...b`, `gh pr diff`);
+   do writes through the GitHub API or in a throwaway clone. A `git status` check
+   is not an interlock — it is true for one instant.
