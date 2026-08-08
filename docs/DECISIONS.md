@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D14`.**
+**Next free identifier: `D15`** — *reserved for F6i (Amoy endpoint choice).*
 
 ---
 
@@ -227,3 +227,43 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   error-object / HTTP 500 / non-string result / wrong chain fails the suite and
   names the URL; a closed port still skips. CI confirms `92 passed / 1 skipped`,
   so D11 is intact.
+
+### D14: public RPCs get an availability class that skips; private ones keep D13
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-08
+- Source: F6h / PR #18
+- Detail: D13 draws the line at "did anything answer" — right for a sequencer we
+  control, wrong for a public provider, which can refuse or throttle for reasons
+  that say nothing about our address data. Under D13 alone those refusals would
+  turn CI red, and the first fix anyone reaches for is deleting the test, which
+  loses the drift detection entirely.
+
+  A probe is now **opt-in availability-aware**. For public networks only
+  (`availabilityAware: true` on Base Sepolia and Polygon Amoy):
+
+  | Response | Class |
+  |---|---|
+  | Transport failure — DNS, refused, timeout | skip (D13) |
+  | HTTP 403, 408, 429, 502, 503, 504 | **skip** — provider refusing or throttling |
+  | JSON-RPC rate-limit error (e.g. `-32005`) | **skip** |
+  | Any other non-2xx | fail (D13) |
+  | HTTP 200 + other JSON-RPC error, or missing/non-string result | fail (D13) |
+  | Correct response, wrong chain id | **fail** — config error, not availability |
+  | Correct response, wrong bytecode shape | **fail** — this is the drift |
+
+  **ForteL2 is deliberately excluded.** Its probe is called with no options, so
+  D13 is unchanged for the private sequencer: a broken ForteL2 RPC still fails.
+  Evidence for skip-on-403: `sepolia.base.org` returns 403 to Python-urllib and 200
+  to Node `fetch` — that is client policy, not address drift.
+
+  **What this buys:** Base Sepolia now runs in CI (~1.5s of real `eth_getCode`),
+  so address drift on that network is caught with nobody remembering to check.
+  Verified by injecting drift — a Base entity row pointed at a contract fails and
+  names the row. Amoy skips until #17 replaces its dead endpoint; when that lands,
+  the Amoy block flips to passing on its own.
+
+  **Known gap (F6k):** the D13 guard test asserts `probeRpcUrl`'s default rather
+  than the ForteL2 call site, so it would not catch someone making ForteL2
+  availability-aware. Behaviour is correct today; the regression net is thinner
+  than it looks.
