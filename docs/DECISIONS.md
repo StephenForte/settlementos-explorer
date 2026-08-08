@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D13`.**
+**Next free identifier: `D14`.**
 
 ---
 
@@ -190,3 +190,40 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   chain check. It expires on any redeploy that regenerates the wallets, and the
   only way to re-confirm is to re-read the manifest on the deploying host. Recorded
   in `PLAN.md` §0 with the date it was true.
+
+### D13: a reachable-but-broken RPC fails the chain check; only transport failures skip
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-08
+- Source: F6g / PR #15
+- Detail: D11 made the chain-852 check skip when the RPC is unreachable, which is
+  correct for CI but made a *broken* endpoint indistinguishable from an absent
+  one — a typo'd `FORTEL2_SEPOLIA_RPC_URL` on the ForteL2 host read as "you must
+  be off-host" and the address book would go unverified indefinitely. The line is
+  now drawn at **whether anything answered**:
+
+  | Situation | Behaviour |
+  |---|---|
+  | Connection refused, DNS failure, transport timeout | skip |
+  | HTTP response arrived, non-2xx | **fail** |
+  | HTTP 200 with a JSON-RPC `error` object | **fail** |
+  | HTTP 200, `result` absent or not a string | **fail** |
+  | HTTP 200, valid result, wrong chain id | **fail** |
+  | HTTP 200, valid result, chain 852 | run the assertions |
+
+  The distinction is **structural, not string-matched** — the `try/catch` wraps
+  only the `fetch` call, so "no HTTP response" is separated from "responded badly"
+  by control flow. Matching on `ECONNREFUSED` / `AbortError` / `err.code` would
+  behave differently on the CI runner than on the host, which is precisely the
+  machine whose behaviour must stay predictable. Do not reintroduce it.
+
+  **Boundary, decided rather than inherited:** a server that sends headers and then
+  never finishes the body is classified **broken**, not unreachable — the probe
+  timeout lands inside `res.json()`. That is deliberate: it answered, so it is
+  broken rather than absent. It fails in ~2s without stalling, and cannot affect CI,
+  where nothing is listening at all.
+
+  Verified end-to-end against stub servers, not just at the classifier: each of
+  error-object / HTTP 500 / non-string result / wrong chain fails the suite and
+  names the URL; a closed port still skips. CI confirms `92 passed / 1 skipped`,
+  so D11 is intact.
