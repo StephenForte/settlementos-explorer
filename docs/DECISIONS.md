@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D11`.**
+**Next free identifier: `D12`.**
 
 ---
 
@@ -133,13 +133,37 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   traceable to a spec that lives with them.
 
 ### D10: `--ash` is a dead token
-- Status: OPEN
+- Status: **APPROVED 2026-08-08 — drop both declarations**
 - Type: design-choice
-- Date: 2026-08-07
-- Source: review of F6b
+- Date: 2026-08-07 (resolved 2026-08-08)
+- Source: review of F6b; resolved by Stephen
 - Detail: `--ash: #9b9c92` is declared in both the light and dark blocks
   (identical value in each, unlike every other token, which inverts) and
   consumed **zero** times anywhere in `src/` or `server/`. The F6b handoff
   described it as "used only as disabled token", which implies a usage that
   does not exist. Options: wire it to a real disabled state, or drop both
-  declarations. **Do not act on this entry until it is APPROVED.**
+  declarations. **Resolution: drop both** — re-confirmed on `4c676cc` that
+  `grep -rF 'var(--ash)' src server` returns 0 hits. Implemented by **F6d**
+  (`src/index.css` lines 20 and 138). If a disabled state later needs a token,
+  add one then, against a real usage.
+
+### D11: chain-852 verification is an opt-in test, skipped when RPC is unreachable
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-08
+- Source: F6c / issue #8; decided by Stephen
+- Detail: The ForteL2 sequencer is host-local (**D4**), so CI cannot reach
+  chain 852 and never will under the current topology. The chain-852 liveness
+  check is therefore encoded as a **vitest block that resolves the RPC from
+  `VITE_FORTEL2_SEPOLIA_RPC_URL` / `FORTEL2_SEPOLIA_RPC_URL` (default
+  `http://127.0.0.1:9545`), probes once, and skips when unreachable** — green
+  in CI, real on the host. Implemented by **F6c-test**.
+  Alternatives considered: a standalone script run by hand (rejected — nothing
+  forces anyone to run it, so it decays to documentation), and docs-only
+  (rejected — a redeploy silently invalidates the evidence with no mechanism to
+  catch it, and per D2 a full redeploy *does* replace the inherited constants).
+  **Accepted cost:** the suite's `0 skipped` baseline ends. Off-host runs will
+  report skipped cases, so "0 skipped" is no longer the signal that the suite is
+  healthy — read the skip reason instead. The risk this buys down is a wrong
+  address shipping silently, which the existing `EXPECTED`-map test structurally
+  cannot catch (see PLAN §6 trap 2).
