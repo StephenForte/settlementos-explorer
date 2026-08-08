@@ -27,7 +27,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6b — design system | **Done** | #6 → `223d452`; tokens in `src/index.css`, `docs/DESIGN.md` |
 | F6c — chain-852 liveness check | **Verified 2026-08-08** | 8 of 11 rows fully confirmed on chain 852; see below. Issue #8 |
 | F6d — drop dead `--ash` token | **Dispatched** | D10 APPROVED (drop) |
-| F6e — chain-852 liveness test | **Dispatched** | encodes the F6c check; D11 |
+| F6c-test — chain-852 liveness test | **Dispatched** | encodes the F6c check; D11 |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -83,15 +83,15 @@ script, not a typo, since a mistyped address would hold nothing — but they hav
 **never sent a transaction**, so nothing on-chain ties them to those companies.
 Treat them as address-shape-and-funding confirmed, ownership unconfirmed. This
 is stronger than the previous "not independently verified" and weaker than
-verified; **F6e does not close the gap either** — see **F6f** / issue #11, which
-records why no chain query can.
+verified; **F6c-test does not close the gap either** — see **F6f** / issue #11,
+which records why no chain query can.
 
 Five of the eleven rows (escrow, three tokens, operator) are **inherited
 constants** shared with Base Sepolia and Polygon Amoy, not ForteL2-specific
 data. They are correct today only because the 2026-08-07 deploy took the
 add-on path. A full redeploy replaces them, and the verification above expires
-with it — which is precisely why F6e encodes it as a runnable check rather than
-a paragraph.
+with it — which is precisely why F6c-test encodes it as a runnable check rather
+than a paragraph.
 
 ---
 
@@ -102,26 +102,36 @@ F6a  address book + mmf-contract role     ✅ merged #4
 F6b  design system (docs/DESIGN.md)       ✅ merged #6
  └── F6b-fix  --mute AA contrast          ✅ merged #7
 F6c  chain-852 liveness check             ✅ verified 2026-08-08 — issue #8
- └── F6e  encode it as an opt-in test     🔄 dispatched (D11)
+ └── F6c-test  encode as opt-in test      🔄 dispatched (D11)
 F6d  drop dead --ash token                🔄 dispatched (D10 APPROVED)
 F6f  entity wallet ownership gap          ⏸️  not dispatchable — issue #11
 F6g  (next free identifier)
+
+F6e  RETIRED — never dispatched, do not reuse
 ```
 
 **Next free identifier: `F6g`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
-**F6f is deliberately not dispatchable.** Ownership of the three zero-nonce
-entity wallets cannot be settled by any chain query — F6c couldn't, and F6e
-can't, since a green F6e run is fully compatible with all three addresses being
-wrong. It needs an out-of-band artifact from settlementos (deploy manifest or
-funding-script records). It is tracked so it is not mistaken for verified, and
-left undispatched so it is not mistaken for actionable.
+**`F6e` is retired, not free.** It was briefly assigned to the chain-852 test
+before that work was renumbered `F6c-test` to sit under the issue it closes
+(#8), matching the `F6b-fix` pattern. The identifier was already published in
+D11 and PR #10 by then, so it is burned rather than recycled — reusing it would
+make two different tasks share a name across the git history, which is exactly
+the collision the pre-assignment rule exists to prevent.
 
-**F6d and F6e may run in parallel** — no file overlap (`src/index.css` vs a new
-test file). F6e must run **on the ForteL2 host**; anywhere else only its skip
-path is reachable, so a worker off-host cannot demonstrate the test ever ran.
+**F6f is deliberately not dispatchable.** Ownership of the three zero-nonce
+entity wallets cannot be settled by any chain query — F6c couldn't, and
+F6c-test can't, since a green F6c-test run is fully compatible with all three
+addresses being wrong. It needs an out-of-band artifact from settlementos
+(deploy manifest or funding-script records). It is tracked so it is not mistaken
+for verified, and left undispatched so it is not mistaken for actionable.
+
+**F6d and F6c-test may run in parallel** — no file overlap (`src/index.css` vs
+a new test file). F6c-test must run **on the ForteL2 host**; anywhere else only
+its skip path is reachable, so a worker off-host cannot demonstrate the test
+ever ran.
 
 ---
 
@@ -186,8 +196,8 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ## 4. Integration order and conflict hot zones
 
 ```
-F6d ──┐
-F6e ──┼── any order (no mutual file overlap)
+F6d      ──┐
+F6c-test ──┼── any order (no mutual file overlap)
 ```
 
 #7 has landed (`ef4991b`), so the `--mute` serialization constraint is
@@ -225,8 +235,8 @@ Each of these has already cost time.
    `src/config/address-book.test.ts:151` is compared against
    `getAddressesForNetwork()` — source versus a copy of itself, both from the
    same commit. Any claim of "addresses verified" must name an out-of-band
-   method. F6e adds a real chain check; the tautological test stays because it
-   still catches accidental edits.
+   method. F6c-test adds a real chain check; the tautological test stays
+   because it still catches accidental edits.
 3. **ForteL2 balances and transfers read `unavailable` by default.** Not a bug —
    see DECISIONS D4. Don't let a worker "fix" it.
 4. **A green Semgrep job isn't proof it ran.** Read the log for

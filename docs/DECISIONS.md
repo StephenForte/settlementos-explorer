@@ -157,7 +157,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   check is therefore encoded as a **vitest block that resolves the RPC from
   `VITE_FORTEL2_SEPOLIA_RPC_URL` / `FORTEL2_SEPOLIA_RPC_URL` (default
   `http://127.0.0.1:9545`), probes once, and skips when unreachable** — green
-  in CI, real on the host. Implemented by **F6e**.
+  in CI, real on the host. Implemented by **F6c-test**.
   Alternatives considered: a standalone script run by hand (rejected — nothing
   forces anyone to run it, so it decays to documentation), and docs-only
   (rejected — a redeploy silently invalidates the evidence with no mechanism to
