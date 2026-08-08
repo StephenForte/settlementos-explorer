@@ -8,4 +8,11 @@ describe('RoleBadge', () => {
     expect(screen.getByText('Escrow')).toBeInTheDocument()
     expect(screen.getByText('Escrow').className).toContain('role-escrow-contract')
   })
+
+  it('styles the mmf-contract role with a dedicated class shared by graph nodes', () => {
+    render(<RoleBadge role="mmf-contract" />)
+    const badge = screen.getByText('Tokenized MMF')
+    expect(badge.className).toContain('role-badge')
+    expect(badge.className).toContain('role-mmf-contract')
+  })
 })
