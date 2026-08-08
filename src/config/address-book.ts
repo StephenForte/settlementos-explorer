@@ -2,6 +2,7 @@ import type { NetworkId } from './networks'
 
 export type AddressRole =
   | 'escrow-contract'
+  | 'mmf-contract'
   | 'token-contract'
   | 'operator'
   | 'treasury'
@@ -64,10 +65,23 @@ const SHARED_TOKENS = {
   },
 } as const
 
-/** Shared PaymentSettlement address on Base Sepolia and Polygon Amoy. */
+/** Shared PaymentSettlement address on Base Sepolia, Polygon Amoy, and ForteL2 Sepolia. */
 export const PAYMENT_SETTLEMENT_ADDRESS =
   '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
+
+/** TokenizedMMF on ForteL2 Sepolia only (Base / Amoy have no fund deployed). */
+export const TOKENIZED_MMF_ADDRESS =
+  '0xaed29387417dad9ab1993332e2c2b99d35ffe7ff'
+
 const OPERATOR = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
+
+const FORTEL2_TREASURY = '0x1E4ee7a078Bd40d1982dF1978C046f8cD0D1D3AA'
+const FORTEL2_ENTITIES = {
+  ent_acme_us: '0xF7842ac33AFF3dD3a6b195Dd366e7730771EBE5d',
+  ent_tokyo_supplier: '0x9E024AA6dc77d4cAB4c0AD5324ec2B2Af43dc116',
+  ent_sg_supplier: '0x15ceB06dAe813d2223992c7a40cA0F1f6678b5b0',
+  ent_osaka_parts: '0xAEd29CA4b33504302bda683B99072129432D7797',
+} as const satisfies Record<EntityId, string>
 
 function tokenEntries(networkId: NetworkId): AddressEntry[] {
   return Object.values(SHARED_TOKENS).map((token) => ({
@@ -83,14 +97,25 @@ function networkEntries(
   networkId: NetworkId,
   treasury: string,
   entities: Record<EntityId, string>,
+  options?: { tokenizedMmf?: string },
 ): AddressEntry[] {
-  return [
+  const entries: AddressEntry[] = [
     {
       address: PAYMENT_SETTLEMENT_ADDRESS,
       role: 'escrow-contract',
       label: 'PaymentSettlement',
       networkId,
     },
+  ]
+  if (options?.tokenizedMmf) {
+    entries.push({
+      address: options.tokenizedMmf,
+      role: 'mmf-contract',
+      label: 'TokenizedMMF',
+      networkId,
+    })
+  }
+  entries.push(
     ...tokenEntries(networkId),
     {
       address: OPERATOR,
@@ -132,7 +157,8 @@ function networkEntries(
       networkId,
       entityId: 'ent_osaka_parts',
     },
-  ]
+  )
+  return entries
 }
 
 export const ADDRESS_BOOK: AddressEntry[] = [
@@ -147,6 +173,9 @@ export const ADDRESS_BOOK: AddressEntry[] = [
     ent_tokyo_supplier: '0x4605e2CD9f232B377588a5C8491a19FAf7303C6a',
     ent_sg_supplier: '0xA0A8a6e7165bADabA3a256fD2cA8316689F1D98F',
     ent_osaka_parts: '0xe8BE2e1E665365A3f9834B8d63d0C393378525a6',
+  }),
+  ...networkEntries('fortel2-sepolia', FORTEL2_TREASURY, FORTEL2_ENTITIES, {
+    tokenizedMmf: TOKENIZED_MMF_ADDRESS,
   }),
 ]
 
@@ -235,7 +264,13 @@ export const ROLE_GROUP_ORDER = ['Contracts', 'Platform', 'Entities'] as const
 export type RoleGroup = (typeof ROLE_GROUP_ORDER)[number]
 
 export function roleGroup(role: AddressRole): RoleGroup {
-  if (role === 'escrow-contract' || role === 'token-contract') return 'Contracts'
+  if (
+    role === 'escrow-contract' ||
+    role === 'mmf-contract' ||
+    role === 'token-contract'
+  ) {
+    return 'Contracts'
+  }
   if (role === 'operator' || role === 'treasury') return 'Platform'
   return 'Entities'
 }
@@ -244,6 +279,8 @@ export function roleLabel(role: AddressRole): string {
   switch (role) {
     case 'escrow-contract':
       return 'Escrow'
+    case 'mmf-contract':
+      return 'Tokenized MMF'
     case 'token-contract':
       return 'Token'
     case 'operator':

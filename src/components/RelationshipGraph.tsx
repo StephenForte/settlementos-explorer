@@ -39,6 +39,7 @@ const ROLE_POSITION: Record<AddressRole, { x: number; yBase: number }> = {
   entity: { x: 40, yBase: 40 },
   operator: { x: 320, yBase: 40 },
   'escrow-contract': { x: 560, yBase: 180 },
+  'mmf-contract': { x: 560, yBase: 270 },
   treasury: { x: 820, yBase: 180 },
   'token-contract': { x: 320, yBase: 420 },
 }

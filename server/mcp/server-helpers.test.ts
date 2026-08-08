@@ -25,8 +25,9 @@ describe('summarizeExplorer', () => {
     expect(summary.networks).toHaveLength(3)
     expect(
       summary.networks.find((n) => n.id === 'fortel2-sepolia')?.addressCount,
-    ).toBe(0)
+    ).toBe(11)
     expect(summary.entities.length).toBeGreaterThan(0)
     expect(summary.byRole['entity']).toBeGreaterThan(0)
+    expect(summary.byRole['mmf-contract']).toBe(1)
   })
 })
