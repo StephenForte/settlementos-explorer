@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AddressBalances } from '../chain/balances'
+import { clearNetworkRpcOverride } from '../lib/clients'
+import { RPC_OVERRIDE_STORAGE_KEY } from '../lib/rpc-overrides'
 import { BalanceChips } from './BalanceChips'
 
 const balances: AddressBalances = {
@@ -27,6 +29,11 @@ const balances: AddressBalances = {
   ],
 }
 
+afterEach(() => {
+  localStorage.removeItem(RPC_OVERRIDE_STORAGE_KEY)
+  clearNetworkRpcOverride('base-sepolia')
+})
+
 describe('BalanceChips', () => {
   it('shows skeleton chips when balances are missing', () => {
     render(<BalanceChips balances={undefined} />)
@@ -38,5 +45,30 @@ describe('BalanceChips', () => {
     render(<BalanceChips balances={balances} />)
     expect(screen.getByText('0.001 ETH')).toBeInTheDocument()
     expect(screen.getByText('mockUSDC: unavailable')).toBeInTheDocument()
+    expect(screen.queryByText(/Set RPC/i)).not.toBeInTheDocument()
+  })
+
+  it('offers an RPC override control when networkId is set and a chip is unavailable', () => {
+    const onRpcOverrideChange = vi.fn()
+    render(
+      <BalanceChips
+        balances={balances}
+        networkId="base-sepolia"
+        onRpcOverrideChange={onRpcOverrideChange}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: /Set RPC for Base Sepolia/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Addresses you view will be sent to this host/i),
+    ).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/RPC URL/i), {
+      target: { value: 'https://base-override.example/rpc' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Save RPC/i }))
+    expect(onRpcOverrideChange).toHaveBeenCalledTimes(1)
   })
 })

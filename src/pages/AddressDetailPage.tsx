@@ -18,6 +18,7 @@ import { CopyButton } from '../components/CopyButton'
 import { CounterpartySummary } from '../components/CounterpartySummary'
 import { ExplorerLink } from '../components/ExplorerLink'
 import { RoleBadge } from '../components/RoleBadge'
+import { RpcOverrideForm } from '../components/RpcOverrideForm'
 import { StatusBanner } from '../components/StatusBanner'
 import { TransferTable } from '../components/TransferTable'
 import { useAsync } from '../hooks/useAsync'
@@ -109,11 +110,28 @@ function AddressDetail({
         {balances.status === 'loading' ? (
           <p className="muted">Loading from public RPC…</p>
         ) : balances.status === 'error' ? (
-          <StatusBanner tone="error">
-            RPC unavailable: {balances.error}
-          </StatusBanner>
+          <>
+            <StatusBanner tone="error">
+              RPC unavailable: {balances.error}
+            </StatusBanner>
+            <RpcOverrideForm
+              networkId={networkId}
+              defaultOpen
+              onChanged={() => {
+                balances.retry()
+                transfers.retry()
+              }}
+            />
+          </>
         ) : (
-          <BalanceChips balances={balances.data} />
+          <BalanceChips
+            balances={balances.data}
+            networkId={networkId}
+            onRpcOverrideChange={() => {
+              balances.retry()
+              transfers.retry()
+            }}
+          />
         )}
       </section>
 

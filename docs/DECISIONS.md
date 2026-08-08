@@ -327,6 +327,36 @@ by reading for the highest number here.
   URL so it tests what ships. F6j (user-configurable RPC, #17) remains the durable
   product fix, though less urgently than issue #17 originally implied.
 
+### D16: User-configurable per-network RPC override (partially supersedes D4)
+- Status: PROPOSED
+- Type: design-choice
+- Date: 2026-08-08
+- Source: F6j / issue #17
+- Detail: When a network's RPC fails (or the whole `fallback()` list is wrong for a
+  user's network position), the UI offers a per-network endpoint override stored in
+  `localStorage`. Precedence is **user override → env (`getEnv` / `NETWORKS`) →
+  built-in fallback list**. The override lives in the client-construction path
+  (`src/lib/clients.ts` + `src/lib/rpc-overrides.ts`), not in `NETWORKS`, so the
+  chain liveness suite (`address-book.chain.test.ts`) keeps verifying what ships.
+
+  Setting or clearing an override invalidates the per-network public-client cache
+  and the shared data cache (`cacheClear()`), so the next balances/transfers call
+  hits the new host in the same page session with no reload.
+
+  Privacy: only `http:` / `https:` URLs are accepted; the form states plainly that
+  viewed addresses are sent to that host; nothing is persisted until Save.
+
+  Endpoint health-probing beyond scheme validation is **out of scope** for F6j.
+  `PROBE_OPTIONS` / `probeRpcUrl` stay in the chain test file; moving probing into
+  product code would require a separate decision about where D13/D14 posture lives.
+
+  **Partially supersedes D4.** D4 said ForteL2 chips reading `unavailable` without a
+  reachable sequencer RPC is intended degradation. That degradation still happens by
+  default, but the chips are now actionable — the user can supply a working endpoint
+  (including pointing at the host-local sequencer from a browser that can reach it).
+  The site still does not hide the network. D4's existing entry is left unchanged;
+  the planner marks its status at merge.
+
 ### D17: Patchhog's status is not a scan result, and its findings are unrecoverable
 - Status: **OPEN** — Stephen is restoring the dashboard deployment; revisit once it answers
 - Type: scope-question

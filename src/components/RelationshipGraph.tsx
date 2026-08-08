@@ -285,7 +285,14 @@ function NodePanel({
         </button>
       </div>
       <p className="mono small break">{address}</p>
-      <BalanceChips balances={bal ?? undefined} />
+      <BalanceChips
+        balances={bal ?? undefined}
+        networkId={networkId}
+        onRpcOverrideChange={() => {
+          balances.retry()
+          transfers.retry()
+        }}
+      />
       {transfers.status === 'ok' ? (
         <TransferTable
           items={transfers.data.items.slice(0, 8)}
