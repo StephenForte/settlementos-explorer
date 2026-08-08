@@ -13,21 +13,23 @@ Companion doc: [`DECISIONS.md`](DECISIONS.md). Read it before starting any task.
 
 ## 0. Verified state (read this before assigning anything)
 
-Everything below was checked against the repo on **2026-08-07**, not carried
-over from a status report. Where a claim was verified, the method is named —
-"verified" without a method is how plans start lying.
+Everything below was re-checked against the repo on **2026-08-08** from a fresh
+clone, not carried over from a status report. Where a claim was verified, the
+method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `223d452` | after F6b (#6) |
-| Test suite | **88 passed / 19 files** | `npx vitest run` locally |
+| `main` | `4c676cc` | after #7 and #9 |
+| Test suite | **88 passed / 19 files, 0 skipped** | `npx vitest run` locally on `4c676cc` |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
 | F6b — design system | **Done** | #6 → `223d452`; tokens in `src/index.css`, `docs/DESIGN.md` |
-| F6c — chain-852 liveness check | **Open** | issue #8; blocked on a host that can reach the sequencer |
+| F6c — chain-852 liveness check | **Verified 2026-08-08** | 8 of 11 rows fully confirmed on chain 852; see below. Issue #8 |
+| F6d — drop dead `--ash` token | **Dispatched** | D10 APPROVED (drop) |
+| F6e — chain-852 liveness test | **Dispatched** | encodes the F6c check; D11 |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
-| `--mute` AA fix | **In flight** | #7 open |
+| `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
 ### Address provenance — how the 11 ForteL2 rows were actually confirmed
 
@@ -39,18 +41,56 @@ were instead confirmed out-of-band during review of #4:
 - **PaymentSettlement, mockUSDC, mockJPY, mockSGD** — derived as CREATE
   addresses from deployer `0x5128889F…652d` at **nonces 5, 6, 7, 8**
   (consecutive), and confirmed to hold bytecode on Base Sepolia via
-  `eth_getCode` (mockUSDC 3623 bytes, PaymentSettlement 8543 bytes).
+  `eth_getCode`.
 - **TokenizedMMF `0xaed29387…ffe7ff`** — deployer nonce **20**; confirmed by
   settlementos PR #40, which records the live 852 session of 2026-08-07 where
   the MMF add-on path deployed it. The nonce gap is explained by the add-on
   reusing the existing escrow and tokens rather than redeploying.
-- **Treasury + 4 entity wallets** — EOAs, not derivable. **Not independently
-  verified.** Taken from the F6a handoff.
+
+> **Units correction (2026-08-08).** This section previously recorded "mockUSDC
+> 3623 bytes, PaymentSettlement 8543 bytes". Those were `eth_getCode`
+> **hex-string lengths, mislabeled as bytes, and off by one** — the true values
+> are 3622 and 8542 hex chars, i.e. **1810 and 4270 bytes**. The substance of
+> the claim (both hold bytecode) is unaffected, but anyone re-running the check
+> and reading 1810/4270 would reasonably conclude the contracts differed. They
+> do not.
+
+### Chain-852 liveness — verified 2026-08-08 (F6c)
+
+Run from a fresh clone **on the ForteL2 host** against the local sequencer at
+`http://127.0.0.1:9545`. Node was at the chain tip, not replaying history:
+`eth_syncing: false`, head block **762584**, head timestamp lag **1s**, cadence
+**2.00s/block**. `eth_chainId` = `0x354` = **852**. Method: `eth_getCode`,
+`eth_getBalance` and `eth_getTransactionCount` per row.
+
+| Row | Role | Result |
+|---|---|---|
+| PaymentSettlement | escrow-contract | bytecode, 4270 B |
+| TokenizedMMF | mmf-contract | bytecode, 2888 B |
+| mockUSDC / mockJPY / mockSGD | token-contract | bytecode, 1810 B each |
+| Operator | operator | no bytecode, nonce 29 |
+| Treasury | treasury | no bytecode, nonce 2 |
+| ACME US Inc | entity | no bytecode, nonce 3 |
+| Tokyo Trading KK | entity | no bytecode, nonce 0, 0.0002 ETH |
+| Singapore Imports Pte Ltd | entity | no bytecode, nonce 0, 0.0002 ETH |
+| Osaka Parts Co | entity | no bytecode, nonce 0, 0.0002 ETH |
+
+**What this does and does not establish.** Eight rows are fully verified: the
+five contracts hold bytecode, and Operator / Treasury / ACME are EOAs that have
+transacted on 852. The remaining three entity wallets are proven to be
+**deliberately-funded EOAs** — identical 0.0002 ETH balances indicate a funding
+script, not a typo, since a mistyped address would hold nothing — but they have
+**never sent a transaction**, so nothing on-chain ties them to those companies.
+Treat them as address-shape-and-funding confirmed, ownership unconfirmed. This
+is stronger than the previous "not independently verified" and weaker than
+verified; **F6e does not close the gap either**, and no task currently does.
 
 Five of the eleven rows (escrow, three tokens, operator) are **inherited
 constants** shared with Base Sepolia and Polygon Amoy, not ForteL2-specific
 data. They are correct today only because the 2026-08-07 deploy took the
-add-on path. A full redeploy replaces them — see F6c.
+add-on path. A full redeploy replaces them, and the verification above expires
+with it — which is precisely why F6e encodes it as a runnable check rather than
+a paragraph.
 
 ---
 
@@ -59,14 +99,20 @@ add-on path. A full redeploy replaces them — see F6c.
 ```
 F6a  address book + mmf-contract role     ✅ merged #4
 F6b  design system (docs/DESIGN.md)       ✅ merged #6
- └── F6b-fix  --mute AA contrast          🔄 open #7
-F6c  chain-852 liveness check             📋 open, issue #8 — needs ForteL2 host
-F6d  (next free identifier)
+ └── F6b-fix  --mute AA contrast          ✅ merged #7
+F6c  chain-852 liveness check             ✅ verified 2026-08-08 — issue #8
+ └── F6e  encode it as an opt-in test     🔄 dispatched (D11)
+F6d  drop dead --ash token                🔄 dispatched (D10 APPROVED)
+F6f  (next free identifier)
 ```
 
-**Next free identifier: `F6d`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6f`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
+
+**F6d and F6e may run in parallel** — no file overlap (`src/index.css` vs a new
+test file). F6e must run **on the ForteL2 host**; anywhere else only its skip
+path is reachable, so a worker off-host cannot demonstrate the test ever ran.
 
 ---
 
@@ -131,13 +177,13 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ## 4. Integration order and conflict hot zones
 
 ```
-F6c ──┐
-F6d ──┼── any order once #7 lands (no mutual file overlap)
+F6d ──┐
+F6e ──┼── any order (no mutual file overlap)
 ```
 
-**#7 should merge before any new design work** — it changes `--mute` in
-`src/index.css`, and any other branch touching that file will conflict on the
-token block.
+#7 has landed (`ef4991b`), so the `--mute` serialization constraint is
+discharged. F6d is the only task currently touching `src/index.css`; any
+further design work must serialize behind it.
 
 Hot zones despite the ownership split:
 
@@ -166,12 +212,26 @@ Each of these has already cost time.
 1. **`main` moves during a task.** F6b was based on `20f17ff` while main was at
    `3ff4592`; #6 then merged *before* a review fix landed on its branch,
    stranding the commit. Re-check `origin/main` immediately before merging.
-2. **The address-book test can't fail on wrong addresses.** It compares the
-   source against a copy of itself. Any claim of "addresses verified" must name
-   an out-of-band method. See F6c / issue #8.
+2. **The address-book test can't fail on wrong addresses.** `EXPECTED` at
+   `src/config/address-book.test.ts:151` is compared against
+   `getAddressesForNetwork()` — source versus a copy of itself, both from the
+   same commit. Any claim of "addresses verified" must name an out-of-band
+   method. F6e adds a real chain check; the tautological test stays because it
+   still catches accidental edits.
 3. **ForteL2 balances and transfers read `unavailable` by default.** Not a bug —
    see DECISIONS D4. Don't let a worker "fix" it.
 4. **A green Semgrep job isn't proof it ran.** Read the log for
    `Findings: N` before reporting a scan result.
 5. **`git add -A` sweeps scan output.** `semgrep-results.json` and
    `trivy-results.*` are gitignored as of #5; stage files explicitly anyway.
+6. **Byte counts in evidence are easy to record wrong.** `eth_getCode` returns
+   a hex *string*: length 3622 means **1810 bytes**. The F6a evidence recorded
+   hex-string lengths as bytes (and off by one), which made the same contracts
+   look different when re-checked on 852. State the unit.
+7. **The stranded-commit pattern is real.** `feat/design-system` carried
+   `cfcd0e3`, byte-identical to what later became #7, because #6 merged before
+   the reviewer's push landed. Before deleting any branch, diff its extra
+   commits against `main` rather than assuming they're redundant.
+8. **`grep` here is ugrep.** `\{` in a pattern errors with "invalid repeat" —
+   use `grep -F`, a character class, or parse in Python. Scratchpad scripts
+   also can't import `viem`; run node from the repo root.
