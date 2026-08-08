@@ -59,6 +59,17 @@ type ProbeOptions = {
   timeoutMs?: number
 }
 
+/**
+ * Single source for each network's probe availability posture (D13 / D14).
+ * Live blocks and posture guards must both read from here — never re-declare
+ * `availabilityAware` at a call site the guards are meant to protect.
+ */
+const PROBE_OPTIONS = {
+  'fortel2-sepolia': {}, // D13: private sequencer — no availability class
+  'base-sepolia': { availabilityAware: true }, // D14
+  'polygon-amoy': { availabilityAware: true }, // D14
+} as const satisfies Record<NetworkId, ProbeOptions>
+
 type LivenessGate = 'run' | 'skip' | 'fail'
 
 function publicRpcUrl(networkId: 'base-sepolia' | 'polygon-amoy'): string {
@@ -263,12 +274,11 @@ async function evaluateLivenessBlock(opts: {
   networkId: NetworkId
   expectedChainId: number
   expectedRowCount: number
-  availabilityAware: boolean
   probeTimeoutMs?: number
   requestTimeoutMs?: number
 }): Promise<'passed' | 'skipped'> {
   const outcome = await probeRpcUrl(opts.rpcUrl, {
-    availabilityAware: opts.availabilityAware,
+    ...PROBE_OPTIONS[opts.networkId],
     timeoutMs: opts.probeTimeoutMs,
   })
   const gate = livenessGate(outcome)
@@ -292,7 +302,10 @@ async function evaluateLivenessBlock(opts: {
 
 // --- Live suites (probe at module load) ------------------------------------
 
-const fortel2Probe = await probeRpcUrl(FORTEL2_RPC_URL)
+const fortel2Probe = await probeRpcUrl(
+  FORTEL2_RPC_URL,
+  PROBE_OPTIONS['fortel2-sepolia'],
+)
 
 if (fortel2Probe.kind === 'broken') {
   describe(`ForteL2 chain-852 liveness (${FORTEL2_RPC_URL})`, () => {
@@ -317,9 +330,10 @@ if (fortel2Probe.kind === 'broken') {
 }
 
 const BASE_SEPOLIA_RPC_URL = publicRpcUrl('base-sepolia')
-const baseProbe = await probeRpcUrl(BASE_SEPOLIA_RPC_URL, {
-  availabilityAware: true,
-})
+const baseProbe = await probeRpcUrl(
+  BASE_SEPOLIA_RPC_URL,
+  PROBE_OPTIONS['base-sepolia'],
+)
 
 if (baseProbe.kind === 'broken') {
   describe(`Base Sepolia chain-84532 liveness (${BASE_SEPOLIA_RPC_URL})`, () => {
@@ -348,9 +362,10 @@ if (baseProbe.kind === 'broken') {
 }
 
 const POLYGON_AMOY_RPC_URL = publicRpcUrl('polygon-amoy')
-const amoyProbe = await probeRpcUrl(POLYGON_AMOY_RPC_URL, {
-  availabilityAware: true,
-})
+const amoyProbe = await probeRpcUrl(
+  POLYGON_AMOY_RPC_URL,
+  PROBE_OPTIONS['polygon-amoy'],
+)
 
 if (amoyProbe.kind === 'broken') {
   describe(`Polygon Amoy chain-80002 liveness (${POLYGON_AMOY_RPC_URL})`, () => {
@@ -462,7 +477,7 @@ describe('ForteL2 RPC probe strictness', () => {
       )
     })
 
-    const outcome = await probeRpcUrl(url)
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['fortel2-sepolia'])
     expect(outcome.kind).toBe('broken')
     if (outcome.kind === 'broken') {
       expect(outcome.message).toContain(url)
@@ -475,7 +490,7 @@ describe('ForteL2 RPC probe strictness', () => {
       res.end('internal server error')
     })
 
-    const outcome = await probeRpcUrl(url)
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['fortel2-sepolia'])
     expect(outcome.kind).toBe('broken')
     if (outcome.kind === 'broken') {
       expect(outcome.message).toContain(url)
@@ -488,7 +503,7 @@ describe('ForteL2 RPC probe strictness', () => {
       res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }))
     })
 
-    const outcome = await probeRpcUrl(url)
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['fortel2-sepolia'])
     expect(outcome.kind).toBe('broken')
     if (outcome.kind === 'broken') {
       expect(outcome.message).toContain(url)
@@ -496,18 +511,47 @@ describe('ForteL2 RPC probe strictness', () => {
   })
 
   it('treats a closed port as unreachable', async () => {
-    const outcome = await probeRpcUrl('http://127.0.0.1:1')
+    const outcome = await probeRpcUrl(
+      'http://127.0.0.1:1',
+      PROBE_OPTIONS['fortel2-sepolia'],
+    )
     expect(outcome.kind).toBe('unreachable')
   })
+})
 
-  it('does not treat HTTP 429 as unavailable without availabilityAware (D13)', async () => {
+/**
+ * Posture guards read PROBE_OPTIONS — the same map the live blocks use.
+ * Mutating an entry must turn the matching guard red (F6k / D14 known gap).
+ */
+describe('probe options posture (D13 / D14)', () => {
+  it('ForteL2 posture: HTTP 429 is broken/fail — no availability class (D13)', async () => {
     const url = await startRpcStub((res) => {
       res.writeHead(429, { 'Content-Type': 'text/plain' })
       res.end('slow down')
     })
-    const outcome = await probeRpcUrl(url)
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['fortel2-sepolia'])
     expect(outcome.kind).toBe('broken')
     expect(livenessGate(outcome)).toBe('fail')
+  })
+
+  it('Base Sepolia posture: HTTP 429 is unavailable/skip (D14)', async () => {
+    const url = await startRpcStub((res) => {
+      res.writeHead(429, { 'Content-Type': 'text/plain' })
+      res.end('too many requests')
+    })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
+    expect(outcome.kind).toBe('unavailable')
+    expect(livenessGate(outcome)).toBe('skip')
+  })
+
+  it('Polygon Amoy posture: HTTP 429 is unavailable/skip (D14)', async () => {
+    const url = await startRpcStub((res) => {
+      res.writeHead(429, { 'Content-Type': 'text/plain' })
+      res.end('too many requests')
+    })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['polygon-amoy'])
+    expect(outcome.kind).toBe('unavailable')
+    expect(livenessGate(outcome)).toBe('skip')
   })
 })
 
@@ -517,7 +561,7 @@ describe('public RPC availability class (D14)', () => {
       res.writeHead(429, { 'Content-Type': 'text/plain' })
       res.end('too many requests')
     })
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('unavailable')
     expect(livenessGate(outcome)).toBe('skip')
 
@@ -526,7 +570,6 @@ describe('public RPC availability class (D14)', () => {
       networkId: 'base-sepolia',
       expectedChainId: 84532,
       expectedRowCount: 10,
-      availabilityAware: true,
     })
     expect(result).toBe('skipped')
   })
@@ -536,7 +579,7 @@ describe('public RPC availability class (D14)', () => {
       res.writeHead(403, { 'Content-Type': 'text/plain' })
       res.end('forbidden')
     })
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('unavailable')
     expect(livenessGate(outcome)).toBe('skip')
 
@@ -545,7 +588,6 @@ describe('public RPC availability class (D14)', () => {
       networkId: 'base-sepolia',
       expectedChainId: 84532,
       expectedRowCount: 10,
-      availabilityAware: true,
     })
     expect(result).toBe('skipped')
   })
@@ -555,7 +597,7 @@ describe('public RPC availability class (D14)', () => {
       res.writeHead(503, { 'Content-Type': 'text/plain' })
       res.end('unavailable')
     })
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('unavailable')
     expect(livenessGate(outcome)).toBe('skip')
 
@@ -564,7 +606,6 @@ describe('public RPC availability class (D14)', () => {
       networkId: 'base-sepolia',
       expectedChainId: 84532,
       expectedRowCount: 10,
-      availabilityAware: true,
     })
     expect(result).toBe('skipped')
   })
@@ -580,7 +621,7 @@ describe('public RPC availability class (D14)', () => {
         }),
       )
     })
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('unavailable')
     expect(livenessGate(outcome)).toBe('skip')
 
@@ -589,7 +630,6 @@ describe('public RPC availability class (D14)', () => {
       networkId: 'base-sepolia',
       expectedChainId: 84532,
       expectedRowCount: 10,
-      availabilityAware: true,
     })
     expect(result).toBe('skipped')
   })
@@ -599,7 +639,7 @@ describe('public RPC availability class (D14)', () => {
       res.writeHead(418, { 'Content-Type': 'text/plain' })
       res.end("I'm a teapot")
     })
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('broken')
     expect(livenessGate(outcome)).toBe('fail')
 
@@ -609,7 +649,6 @@ describe('public RPC availability class (D14)', () => {
         networkId: 'base-sepolia',
         expectedChainId: 84532,
         expectedRowCount: 10,
-        availabilityAware: true,
       }),
     ).rejects.toThrow(/HTTP 418/)
   })
@@ -622,7 +661,7 @@ describe('public RPC availability class (D14)', () => {
       return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
     })
 
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('reachable')
     expect(livenessGate(outcome)).toBe('run')
 
@@ -632,7 +671,6 @@ describe('public RPC availability class (D14)', () => {
         networkId: 'base-sepolia',
         expectedChainId: 84532,
         expectedRowCount: 10,
-        availabilityAware: true,
       }),
     ).rejects.toThrow()
   })
@@ -668,7 +706,7 @@ describe('public RPC availability class (D14)', () => {
       return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
     })
 
-    const outcome = await probeRpcUrl(url, { availabilityAware: true })
+    const outcome = await probeRpcUrl(url, PROBE_OPTIONS['base-sepolia'])
     expect(outcome.kind).toBe('reachable')
 
     await expect(
@@ -677,7 +715,6 @@ describe('public RPC availability class (D14)', () => {
         networkId: 'base-sepolia',
         expectedChainId: 84532,
         expectedRowCount: 10,
-        availabilityAware: true,
       }),
     ).rejects.toThrow(/expected contract bytecode/)
   })
