@@ -16,6 +16,10 @@ coverage
 .env.*
 !.env.example
 
+# Local security-scan output (CI publishes its own; these are throwaway)
+semgrep-results.json
+trivy-results.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
