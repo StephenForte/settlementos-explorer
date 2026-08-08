@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `d03bff9` | after #12 and #13 |
-| Test suite | **89 total** — `89 passed / 0 skipped` on the ForteL2 host, `88 passed / 1 skipped` anywhere else | `npx vitest run` on `d03bff9`, both paths exercised |
+| `main` | `7673572` | after #14 and #15 |
+| Test suite | **93 total** — `93 passed / 0 skipped` on the ForteL2 host, `92 passed / 1 skipped` anywhere else | `npx vitest run` on `7673572`, both paths exercised; CI log confirms the skip |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
@@ -29,6 +29,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6f — entity wallet ownership | **Closed 2026-08-08** | `chain/deployments.fortel2-sepolia.json` matches all 4 entities + treasury. Issue #11 |
 | F6d — drop dead `--ash` token | **Done** | #12 → `c112874`; token-set and value diff vs `main` — 2 removals, 0 additions, every surviving token byte-identical |
 | F6c-test — chain-852 liveness test | **Done** | #13 → `d03bff9`; proved it fails on a consistently-corrupted address that the `EXPECTED` map accepts |
+| F6g — broken RPC fails, not skips | **Done** | #15 → `7673572`; end-to-end: error object / HTTP 500 / bad result / wrong chain all fail, closed port skips. D13 |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -116,12 +117,13 @@ F6c  chain-852 liveness check             ✅ verified 2026-08-08 — issue #8
  └── F6c-test  encode as opt-in test      ✅ merged #13
 F6d  drop dead --ash token                ✅ merged #12
 F6f  entity wallet ownership gap          ✅ closed 2026-08-08 — issue #11
-F6g  (next free identifier)
+F6g  broken RPC fails, not skips          ✅ merged #15 (D13)
+F6h  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6g`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6h`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
@@ -272,11 +274,13 @@ Each of these has already cost time.
    **Check the exit code, not just the empty output.** Working form:
    `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
    from the repo root.
-9. **`0 skipped` is no longer the health signal.** As of #13 the suite is 89
+9. **`0 skipped` is no longer the health signal.** As of #15 the suite is 93
    tests, and off the ForteL2 host one of them skips by design (D11). A run
-   reporting `88 passed / 1 skipped` is healthy; a run reporting `89 passed` means
+   reporting `92 passed / 1 skipped` is healthy; a run reporting `93 passed` means
    you are on the host and the chain check really executed. Read *which* test
-   skipped, not the count.
+   skipped, not the count. Since #15 a **skip now means genuinely nothing
+   answered** — a reachable-but-broken RPC fails instead (D13), so a skip on the
+   host is itself the signal that something is misconfigured.
 10. **Never run git write commands in a working directory an agent is using.**
    A worker agent, the planner and the reviewer share one HEAD, index and tree.
    On 2026-08-08 a planner `checkout -b` put a docs commit on the agent's branch,
