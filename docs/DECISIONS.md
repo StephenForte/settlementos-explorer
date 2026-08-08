@@ -26,9 +26,9 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D18`.** `D16` is assigned to **F6j** (dispatched
-2026-08-08, not yet written); `D17` is below. Take `D18` only from the plan, never
-by reading for the highest number here.
+**Next free identifier: `D19`.** `D18` is assigned to **F6n** (dispatched 2026-08-08,
+not yet written, and optional for that task). Take `D19` only from the plan, never by
+reading for the highest number here.
 
 ---
 
@@ -68,7 +68,12 @@ by reading for the highest number here.
   distinction; do not "fix" the apparent duplication.
 
 ### D4: ForteL2 balances and transfers read `unavailable` without an RPC URL
-- Status: APPROVED
+- Status: APPROVED — **partially superseded by D16 (2026-08-08)**. The default degradation
+  described below is unchanged and still intended: off the operator Mac, ForteL2 chips
+  still read `unavailable`, and **that is still not a bug to fix** (PLAN §6 trap 3 stands).
+  What D16 changes is only that the chips are now *actionable* — a user may supply their
+  own endpoint. Nothing about the default behaviour, and nothing about the instruction not
+  to "fix" it, is retracted.
 - Type: design-choice
 - Date: 2026-08-08
 - Source: Stephen, via F6a handoff
@@ -328,7 +333,12 @@ by reading for the highest number here.
   product fix, though less urgently than issue #17 originally implied.
 
 ### D16: User-configurable per-network RPC override (partially supersedes D4)
-- Status: PROPOSED
+- Status: **APPROVED 2026-08-08** (#27 → `b58b165`). Reviewer re-ran the full gate in an
+  isolated clone: **125 passed / 0 skipped**, all three chain blocks live (ForteL2 34ms,
+  Base 1224ms, Amoy 5029ms against dRPC). The cache-invalidation mutation was re-run
+  independently — removing `invalidatePublicClient` from `setNetworkRpcOverride` turns
+  `override changes the URL set for the next client with no reload` red, so the guard
+  guards. `PROPOSED` was not one of this log's documented statuses; corrected here.
 - Type: design-choice
 - Date: 2026-08-08
 - Source: F6j / issue #17
