@@ -196,13 +196,13 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ## 4. Integration order and conflict hot zones
 
 ```
-F6d      ──┐
-F6c-test ──┼── any order (no mutual file overlap)
+F6d      ──✅ merged #12
+F6c-test ──── next; nothing queued behind it
 ```
 
-#7 has landed (`ef4991b`), so the `--mute` serialization constraint is
-discharged. F6d is the only task currently touching `src/index.css`; any
-further design work must serialize behind it.
+#7 (`ef4991b`) and F6d (`c112874`) have both landed, so the `--mute`
+serialization constraint is fully discharged and **no task currently owns
+`src/index.css`** — the next design task can take it without queueing.
 
 Hot zones despite the ownership split:
 
@@ -251,6 +251,12 @@ Each of these has already cost time.
    `cfcd0e3`, byte-identical to what later became #7, because #6 merged before
    the reviewer's push landed. Before deleting any branch, diff its extra
    commits against `main` rather than assuming they're redundant.
-8. **`grep` here is ugrep.** `\{` in a pattern errors with "invalid repeat" —
-   use `grep -F`, a character class, or parse in Python. Scratchpad scripts
-   also can't import `viem`; run node from the repo root.
+8. **`grep` here is ugrep, and its errors look like clean results.** `\{` in a
+   pattern errors with "invalid repeat", and a pattern starting with `--` is
+   parsed as an option: `grep --ash file` exits **2** with "invalid option",
+   not 1 ("no matches"). Both produce no output, so a worker reading only stdout
+   reports "0 hits" from a command that never ran — this happened in the F6d
+   handoff (#12), where the claim was true but the cited evidence was void.
+   **Check the exit code, not just the empty output.** Working form:
+   `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
+   from the repo root.
