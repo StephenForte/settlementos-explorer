@@ -19,15 +19,15 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `4c676cc` | after #7 and #9 |
-| Test suite | **88 passed / 19 files, 0 skipped** | `npx vitest run` locally on `4c676cc` |
+| `main` | `d03bff9` | after #12 and #13 |
+| Test suite | **89 total** — `89 passed / 0 skipped` on the ForteL2 host, `88 passed / 1 skipped` anywhere else | `npx vitest run` on `d03bff9`, both paths exercised |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
 | F6b — design system | **Done** | #6 → `223d452`; tokens in `src/index.css`, `docs/DESIGN.md` |
 | F6c — chain-852 liveness check | **Verified 2026-08-08** | 8 of 11 rows fully confirmed on chain 852; see below. Issue #8 |
-| F6d — drop dead `--ash` token | **Dispatched** | D10 APPROVED (drop) |
-| F6c-test — chain-852 liveness test | **Dispatched** | encodes the F6c check; D11 |
+| F6d — drop dead `--ash` token | **Done** | #12 → `c112874`; token-set and value diff vs `main` — 2 removals, 0 additions, every surviving token byte-identical |
+| F6c-test — chain-852 liveness test | **Done** | #13 → `d03bff9`; proved it fails on a consistently-corrupted address that the `EXPECTED` map accepts |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -102,8 +102,8 @@ F6a  address book + mmf-contract role     ✅ merged #4
 F6b  design system (docs/DESIGN.md)       ✅ merged #6
  └── F6b-fix  --mute AA contrast          ✅ merged #7
 F6c  chain-852 liveness check             ✅ verified 2026-08-08 — issue #8
- └── F6c-test  encode as opt-in test      🔄 dispatched (D11)
-F6d  drop dead --ash token                🔄 dispatched (D10 APPROVED)
+ └── F6c-test  encode as opt-in test      ✅ merged #13
+F6d  drop dead --ash token                ✅ merged #12
 F6f  entity wallet ownership gap          ⏸️  not dispatchable — issue #11
 F6g  (next free identifier)
 
@@ -197,7 +197,8 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 
 ```
 F6d      ──✅ merged #12
-F6c-test ──── next; nothing queued behind it
+F6c-test ──✅ merged #13 (closed issue #8)
+F6f      ──⏸️  blocked on an out-of-band artifact — issue #11
 ```
 
 #7 (`ef4991b`) and F6d (`c112874`) have both landed, so the `--mute`
@@ -260,3 +261,17 @@ Each of these has already cost time.
    **Check the exit code, not just the empty output.** Working form:
    `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
    from the repo root.
+9. **`0 skipped` is no longer the health signal.** As of #13 the suite is 89
+   tests, and off the ForteL2 host one of them skips by design (D11). A run
+   reporting `88 passed / 1 skipped` is healthy; a run reporting `89 passed` means
+   you are on the host and the chain check really executed. Read *which* test
+   skipped, not the count.
+10. **Never run git write commands in a working directory an agent is using.**
+   A worker agent, the planner and the reviewer share one HEAD, index and tree.
+   On 2026-08-08 a planner `checkout -b` put a docs commit on the agent's branch,
+   a `reset --hard` orphaned the agent's commit, and an agent-side reset silently
+   reverted half of an in-progress docs edit — producing a commit that looked
+   complete but contained 2 of 5 changes. Read the shared checkout with
+   ref-scoped commands (`git show <ref>:<path>`, `git diff a...b`, `gh pr diff`);
+   do writes through the GitHub API or in a throwaway clone. A `git status` check
+   is not an interlock — it is true for one instant.
