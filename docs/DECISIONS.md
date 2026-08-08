@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D15`** — *reserved for F6i (Amoy endpoint choice).*
+**Next free identifier: `D16`.** `D15` is OPEN below, awaiting the F6i handoff.
 
 ---
 
@@ -267,3 +267,31 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
   than the ForteL2 call site, so it would not catch someone making ForteL2
   availability-aware. Behaviour is correct today; the regression net is thinner
   than it looks.
+
+### D15: Polygon Amoy's replacement RPC endpoint
+- Status: **OPEN** — evidence gathered, choice pending the F6i handoff
+- Type: design-choice
+- Date: 2026-08-08
+- Source: F6i / issue #17
+- Detail: `https://rpc-amoy.polygon.technology` — the `rpcUrl` on `main` — does not
+  resolve (`ENOTFOUND`, 3/3 attempts; `dig` returns nothing), so every Amoy feature
+  is dead for all users. Candidates measured from the ForteL2 Mac on 2026-08-08:
+
+  | Endpoint | chainId | getCode | eth_call | **getLogs @ 2000 blocks** | latency |
+  |---|---|---|---|---|---|
+  | `rpc-amoy.polygon.technology` | — | — | — | **dead** | — |
+  | `polygon-amoy-bor-rpc.publicnode.com` | 80002 | 4270 B | ok | **OK** | 111ms median, 6/6 |
+  | `polygon-amoy.drpc.org` | 80002 | 4270 B | ok | **OK** | 45ms median, 6/6 |
+  | `80002.rpc.thirdweb.com` | 80002 | 4270 B | ok | **REJECTED** `-32005` | 200ms |
+  | `rpc.ankr.com/polygon_amoy` | — | — | — | needs an API key | — |
+
+  **`eth_getLogs` is the selection criterion, not `eth_chainId`.**
+  `src/chain/transfers.ts` requests logs in `LOG_CHUNK = 2_000n` windows, and
+  thirdweb rejects exactly that window while answering every other method
+  perfectly. Worse, `getLogsChunked` swallows chunk failures by design (`catch {}`),
+  so a rejecting endpoint yields an **empty transfer list rather than an error** —
+  it cannot be caught by loading the app and seeing whether it looks right.
+
+  Two candidates qualify. The choice, and whatever is known about its rate limits
+  and terms, comes from the F6i handoff; this entry flips to APPROVED then.
+  **Workers must not act on this entry while it reads OPEN.**
