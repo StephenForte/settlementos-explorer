@@ -121,10 +121,10 @@ F6d  drop dead --ash token                ✅ merged #12
 F6f  entity wallet ownership gap          ✅ closed 2026-08-08 — issue #11
 F6g  broken RPC fails, not skips          ✅ merged #15 (D13)
 F6h  Base + Amoy liveness                 ✅ merged #18 (D14)
-F6i  replace dead Amoy rpcUrl             📋 open — issue #17 (D15 reserved)
+F6i  replace dead Amoy rpcUrl             🔄 dispatched — issue #17 (D15 OPEN)
 F6j  user-configurable RPC on failure     📋 open — issue #17
 F6k  make the D13 guard test real         ✅ merged #20
-F6l  D14 availability past the probe       📋 dispatched — 2 verified bugs
+F6l  D14 availability past the probe       🔄 dispatched — 2 verified bugs
 F6m  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
@@ -231,6 +231,13 @@ F6l all own it, so they run one at a time — F6k landed as #20, and F6l branche
 from `main` after it. F6i owns `src/config/networks.ts` and overlaps with none of
 them, so it can run in parallel with any. F6j should follow F6i rather than run
 beside it — both change how an RPC URL is resolved.
+
+**F6i and F6l are in flight together and interact.** They own different files
+(`networks.ts` vs `address-book.chain.test.ts`) so they cannot conflict, but F6i
+flips Polygon Amoy from skipped to passing. **Whichever merges second will show a
+skipped count one lower than its prompt predicted** — that is the two tasks
+interacting correctly, not drift. Both handoffs were asked to name *which* networks
+skipped, so check names before treating any count movement as a finding.
 
 **Open design question, raised by F6k and deliberately not decided.** The
 `PROBE_OPTIONS` map lives in the chain test file because `probeRpcUrl` is test-only
