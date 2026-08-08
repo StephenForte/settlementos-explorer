@@ -339,8 +339,9 @@ input {
 }
 
 .network-switcher button.active {
+  /* Ink-on-canvas inversion: works in light (dark pill) and dark (cream pill). */
   background: var(--ink);
-  color: var(--on-dark);
+  color: var(--canvas);
 }
 
 .network-switcher button:focus-visible {
