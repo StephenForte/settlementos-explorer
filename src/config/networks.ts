@@ -50,7 +50,10 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     id: 'polygon-amoy',
     name: 'Polygon Amoy',
     chainId: 80002,
-    rpcUrl: 'https://rpc-amoy.polygon.technology',
+    // polygon.technology Amoy RPC no longer resolves; dRPC verified for getLogs@2000.
+    rpcUrl:
+      getEnv('VITE_POLYGON_AMOY_RPC_URL', 'POLYGON_AMOY_RPC_URL') ??
+      'https://polygon-amoy.drpc.org',
     explorerName: 'Polygonscan',
     explorerUrl: 'https://amoy.polygonscan.com',
     nativeSymbol: 'POL',
