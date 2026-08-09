@@ -19,7 +19,7 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `7b6b382` | after #28, plus an **unreviewed direct push** (see §6 trap 12). A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| `main` | `7b6b382` | after #28, plus an authorised Patchhog portal push that bypassed CI (see §6 trap 12); gate re-run by hand afterwards. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
 | Test suite | **131 total** — `131 passed / 0 skipped` on the ForteL2 host, `130 passed / 1 skipped` anywhere else | `npm test` on `7b6b382` in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 39ms, Base 1362ms, Amoy 4120ms, real `eth_getCode` |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
@@ -389,15 +389,24 @@ Each of these has already cost time.
    and Cursor Bugbot are real** — all three verified as genuine check runs on #24's head.
    See **D17** and **F6m**.
 
-12. **A commit labelled "security fix" is a claim, not a fix — check what it changed.**
-   On 2026-08-08 commit `7b6b382`, message *"Security: bump 1 vulnerable dependency
-   (Patchhog security fix)"*, was pushed **directly to `main` with no PR**. It did not fix
-   the advisory it was raised for: the report was `@hono/node-server@1.19.14`
-   (GHSA-frvp-7c67-39w9), and the commit added `nanoid: 3.3.17` to `overrides` while
-   leaving `@hono/node-server` at **1.19.14** — verified against the lockfile on `main`.
-   Two failures, both worth remembering: the change did something other than what its
-   message said, and being a direct push it **skipped CI, Semgrep, Trivy and Bugbot**,
-   which §3 exists to guarantee. `main` was re-verified green afterwards by hand
-   (131 passed / 0 skipped, `npm ci` coherent), but that was luck, not process.
-   **Read the diff of any automated security commit before believing its subject line**,
-   and see **D20** for why the advisory itself needs no code change.
+12. **Patchhog applies fixes as a direct push to `main`, which skips every scanner.**
+   On 2026-08-08, commit `7b6b382` — *"Security: bump 1 vulnerable dependency (Patchhog
+   security fix)"* — landed **directly on `main` with no PR**. Stephen authorised it in the
+   Patchhog portal, so it is **not** an autonomous bot write, and it runs under his account
+   because that is the credential the portal holds. The gap is the delivery channel, not
+   the authorisation: §3 routes fixes through a PR precisely so CI, Semgrep, Trivy and
+   Bugbot run, and a portal-applied push gets none of them. This one changed
+   `package.json` + `package-lock.json` — the highest-blast-radius pair in the repo — and
+   `main` was only confirmed green afterwards by a hand-run gate (`npm ci` coherent,
+   131 passed / 0 skipped). That was verification after the fact, not before.
+   **If you authorise a portal fix, re-run the gate on `main` yourself**, because nothing
+   else will.
+
+   *Planner error worth recording (2026-08-08).* I first read this commit as claiming to fix
+   the `@hono/node-server` advisory and failing to — it bumped `nanoid` and left
+   `@hono/node-server` at `1.19.14`. **That was wrong.** The message says "1 vulnerable
+   dependency" and names no package; Patchhog had several findings, this one applied the
+   `nanoid` fix, and the hono advisory was simply still outstanding (see **D20**). I
+   inferred a connection from timing and stated it as fact. **Do not infer which advisory
+   an automated security commit addresses from what was reported near it — read the diff
+   and match the package.**
