@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `bfa8979` | after #31 and #32. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
-| Test suite | **135 total** — `135 passed / 0 skipped` on the ForteL2 host, `134 passed / 1 skipped` anywhere else | `npm test` on `pr31` (= `651e7d4`) in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 73ms, Base 1210ms, Amoy 5304ms, real `eth_getCode` |
+| `main` | `d04300f` + #33 | this PR is written to land after #33. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **137 total** — `137 passed / 0 skipped` on the ForteL2 host, `136 passed / 1 skipped` anywhere else | `npm test` on `pr33` (= `e1ab6d7`) in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 295ms, Base 1153ms, Amoy 4378ms, real `eth_getCode` |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
@@ -37,6 +37,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6j — user-configurable RPC | **Done** | #27 → `b58b165`; override layers **above** `NETWORKS` so the liveness suite still verifies what ships. Invalidation mutation re-run by the reviewer: dropping `invalidatePublicClient` turns the no-reload test red. D16 |
 | F6n — superseded-epoch cache guard | **Done** | #28 → `62b9548`; reviewer reverted `cache.ts` to `main` keeping the new tests and **both** epoch tests went red, incl. the `inflight.delete` case no bot reported. Purely additive test file (zero deletions) |
 | F6o — Overview RPC override + reload | **Done** | #31 → `651e7d4`; reviewer re-ran four mutations — dropping the reload token from the dep array turns 3 tests red, adding `query` turns 1 red, a genuine two-tick double refresh turns 2 red, and an unstable object dep dies on heap exhaustion rather than passing quietly. The PR's own claimed mutation was vacuous (§6 trap 13) |
+| F6p — sticky Overview override control | **Done** | #33 → `e1ab6d7`; the worker's own mutation re-run by the reviewer and it genuinely goes red. Two further probes: no control leak from the previous network *during* the next one's load (the window their test skipped), and the render-time latch is stable under `StrictMode` across a broken→healthy→broken→healthy round trip, 0 re-render errors |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -133,8 +134,7 @@ F6l  D14 availability past the probe       ✅ merged #22
 F6m  Patchhog reports nothing readable    📋 open — D17, waiting on the dashboard
 F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
-F6p  override control unmounts mid-reload 📤 dispatched 2026-08-09
-                                             D22 (optional) · strong · after #31
+F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
 F6q  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
@@ -143,6 +143,14 @@ F6e  RETIRED — never dispatched, do not reuse
 **Next free identifier: `F6q`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
+
+**`D22` is retired, not free.** Pre-assigned to F6p as optional. F6p hit no design fork —
+a session-local boolean latched during render, reset on `networkId` change — so the worker
+correctly wrote no entry. Burned rather than recycled. **Three consecutive optional
+decision identifiers have now retired unused (`D18`, `D19`, `D22`).** That is not waste;
+it is the pre-assignment rule working. An optional identifier costs one line in a dispatch
+and removes the chance of two parallel workers claiming the same number. Keep pre-assigning
+them, and keep retiring them.
 
 **`D19` is retired, not free.** It was pre-assigned to F6o as optional and published in
 that dispatch and in this plan. F6o used the mechanism the dispatch specified — a
@@ -190,7 +198,7 @@ Ownership is what keeps parallel agents from colliding. State it per task.
 | `.github/workflows/**` | CI tasks | actions pinned to SHAs — keep them pinned |
 | `src/lib/rpc-overrides.ts`, `src/lib/clients.ts` | RPC-resolution tasks | override precedence + client cache; **must stay above `NETWORKS`** (D16) |
 | `src/lib/cache.ts` | F6n (landed) | epoch guard — **do not modify**; correct and freshly reviewed |
-| `src/pages/OverviewPage.tsx` | F6p | F6o's override control + reload token landed in #31; **do not change the balance effect's dep array** — it must stay `[entries, networkId, balanceReloadToken]` (D14) |
+| `src/pages/OverviewPage.tsx` | **unowned** (F6o #31, F6p #33 landed) | **do not change the balance effect's dep array** — it must stay `[entries, networkId, balanceReloadToken]`, and do not derive the sticky latch from render-time identity. Either one reopens the fan-out loop that D14 turns into silent skips |
 
 **Append-only shared files that will conflict anyway:** `DECISIONS.md` (every
 worker appends at the end), and the `ROLES` array in `server/mcp/server.ts`.
@@ -249,16 +257,17 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 
 ```
 F6g ──✅ #15   F6h ──✅ #18   F6k ──✅ #20   F6l ──✅ #22
-F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n ──✅ #28 ──▶ F6o ──✅ #31 ──▶ F6p  📤 in flight  (OverviewPage)
+F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n ──✅ #28 ──▶ F6o ──✅ #31 ──▶ F6p ──✅ #33  (chain complete)
 F6m  📋 blocked on the Patchhog dashboard, not on any task
 ```
 
-**Nothing is parallel right now.** F6p is the only task in flight and it owns
-`src/pages/OverviewPage.tsx`. A task can run beside it only if it avoids that page,
-`src/lib/cache.ts`, and the RPC-resolution files (`clients.ts`, `rpc-overrides.ts`).
-F6p also must not touch `src/components/BalanceChips.tsx` or `RpcOverrideForm.tsx` —
-both are shared with three other pages, so changing their gating puts the task outside
-a reviewable diff.
+**Nothing is in flight.** The F6i → F6p chain is complete and `src/pages/OverviewPage.tsx`
+is unowned, so the next task can take it without queueing. **F6m is the only open task**,
+and it is blocked on an external dashboard rather than on any file, so it constrains
+nothing. Any new work can start in parallel — the constraint to re-check first is
+`src/components/BalanceChips.tsx` and `RpcOverrideForm.tsx`, which are shared with three
+pages: changing their gating or props forces every caller to change and puts a task
+outside a reviewable diff (the F6j lesson in §2).
 
 **F6i and F6h interact usefully:** once F6i replaces the dead Amoy endpoint, the
 F6h suite's Amoy block flips from skip to pass on its own. That is a free
@@ -293,9 +302,11 @@ D16. The question reopens if anything ever needs to health-check an endpoint bef
   entity and graph panels do. A user whose first stop is Overview sees `unavailable`
   with no affordance. **Closed by F6o (#31)** — a page-level `RpcOverrideForm` mounts
   when any row is unavailable or an override already exists, and save/clear bumps a
-  primitive reload token that re-runs the balance effect exactly once. One gap remains,
-  dispatched as **F6p**: the control unmounts during the reload that follows a clear,
-  so with a slow or dead default RPC it vanishes for the length of the timeout.
+  primitive reload token that re-runs the balance effect exactly once. The one gap it
+  left — the control unmounting during the reload that follows a clear, so a slow or dead
+  default RPC made it vanish for the length of the timeout — is **closed by F6p (#33)**,
+  which latches the control per network and resets that latch on `networkId` change.
+  **This residual risk is fully discharged.**
 - **F6j made a latent `cache.ts` flaw reachable** — a fetch already in flight when
   `cacheClear()` runs still writes its result, and can overwrite a newer good one
   (last-writer-wins). **Closed by F6n (#28)** — an epoch counter discards writes and
@@ -372,11 +383,12 @@ Each of these has already cost time.
    **Check the exit code, not just the empty output.** Working form:
    `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
    from the repo root.
-9. **Skip counts are per-network now; the number alone means nothing.** As of #31
-   the suite is 135 tests across **three** chain blocks, and all three are live
-   (measured on the ForteL2 host: ForteL2 73ms, Base Sepolia 1210ms, Amoy 5304ms).
-   Healthy states: `135 passed / 0 skipped` on the ForteL2 host, and
-   `134 passed / 1 skipped` anywhere else (ForteL2 only). **Base Sepolia and Polygon
+9. **Skip counts are per-network now; the number alone means nothing.** As of #33
+   the suite is 137 tests across **three** chain blocks, and all three are live
+   (measured on the ForteL2 host: ForteL2 295ms, Base Sepolia 1153ms, Amoy 4378ms —
+   the public-chain timings vary by seconds run to run; treat them as liveness evidence,
+   not a budget). Healthy states: `137 passed / 0 skipped` on the ForteL2 host, and
+   `136 passed / 1 skipped` anywhere else (ForteL2 only). **Base Sepolia and Polygon
    Amoy must never appear in the skipped list** — they are the blocks that run in CI,
    so a silent skip there means automated drift detection is gone. Read the
    `describe` titles, not the count. A public block may also skip *mid-run* on
@@ -442,3 +454,18 @@ Each of these has already cost time.
    one — a claim can be false while the underlying code is correct, and the two failures
    look identical from the PR body. Same family as trap 4, trap 8 and trap 11: something
    that never really ran reading as a clean result.
+
+   *The follow-through, recorded because the negative case is what makes the trap
+   usable (2026-08-09).* The very next handoff, F6p (#33), cited a mutation — reverting
+   `showRpcOverride` to its pre-F6p form — and on re-run it **genuinely went red**, with
+   the exact error the handoff quoted. So the rule is "re-run the cited mutation", not
+   "distrust cited mutations". Two handoffs, two opposite outcomes, and the only way to
+   tell them apart was to run it. Cheap check, and it is the one that separates a real
+   proof from a plausible sentence.
+
+   **Two mutation shapes that reliably prove nothing in React**, both worth recognising
+   before citing one: (a) **two `setState` calls in the same handler** — batched into one
+   transition, so no extra effect run; (b) **a state update that lands on an equal value**
+   — React bails out of the re-render, so a "changed" dependency never fires. If a
+   mutation is supposed to cause extra work, assert the **call count** of the expensive
+   thing, and confirm the number actually moves.
