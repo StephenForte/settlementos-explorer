@@ -26,13 +26,13 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D24`.** `D20`, `D21` and `D23` are below. **`D18`, `D19` and `D22` are
+**Next free identifier: `D25`.** `D20`, `D21`, `D23` and `D24` are below. **`D18`, `D19` and `D22` are
 all retired unused** — pre-assigned to F6n, F6o and F6p respectively, published in those
 dispatches, and correctly declined because none of the three hit a design fork: each used
 the mechanism its dispatch specified. Burned rather than recycled, as `F6e` was. Three
 retirements in a row is the pre-assignment rule working, not waste — an optional
 identifier costs one line in a dispatch and removes the chance of two parallel workers
-claiming the same number. Take `D24` only from the plan, never by reading for the highest
+claiming the same number. Take `D25` only from the plan, never by reading for the highest
 number here.
 
 ---
@@ -498,7 +498,7 @@ number here.
   | ↳ Dismiss stale approvals | off | Nothing to dismiss at 0 approvals. |
   | ↳ Require conversation resolution | off | Bugbot opens review threads; this would mean closing them by hand every time. |
   | Require status checks | **on** | |
-  | ↳ Contexts | `check`, `Semgrep SAST`, `Trivy Dependency & Misconfig Scan` | **Repo-specific** — these are this repo's exact check-run names, verified against #24's head. Other repos need their own. |
+  | ↳ Contexts | `check`, `Semgrep SAST`, `Trivy Dependency & Misconfig Scan`, **`patchhog/security`** (added 2026-08-09, see **D24**) | **Repo-specific** — these are this repo's exact check-run names, verified against #24's head. Other repos need their own. Note `patchhog/security` is a commit *status*, not a check run, so it does not appear in GitHub's suggestion dropdown and must be typed exactly. |
   | ↳ Require up to date before merging | **off** | Deliberate. Planner docs PRs move `main` constantly; requiring this would put every worker on a rebase treadmill. #28 merged one commit behind `main` with zero risk because the intervening commit was docs-only. |
   | Require linear history | off | Squash merges already produce it; adds friction, solves nothing here. |
   | **Bypass list** | **Repository admin** | Stephen's deliberate escape hatch — keeps the Patchhog portal path and genuine emergencies working. |
@@ -516,9 +516,13 @@ number here.
     > Patchhog *does* have a threshold and *has* failed four times. The decision to leave
     > it out of the required contexts stands, but for a different reason — a red Patchhog
     > links to a dead dashboard, so a blocked merge could not be triaged. That is a
-    > defensible reason not to gate; "it is always green" was not. **Stephen confirmed
-    > 2026-08-09: no ruleset change for now** — this exclusion stands as written, on the
-    > corrected reasoning. Reopen if the dashboard comes back.
+    > defensible reason not to gate; "it is always green" was not.
+    >
+    > **Then reversed the same day — this omission no longer applies. See D24.** Stephen
+    > added `patchhog/security` to the ruleset on 2026-08-09; it is now a **required
+    > context**, verified against the API. The bullet above is retained because the log is
+    > append-only, but it describes a state that no longer exists. **Only one deliberate
+    > omission remains: `Cursor Bugbot`.**
 
   **Known and accepted limitation.** Patchhog holds Stephen's own credential (the `7b6b382`
   push was authored *and* committed as `StephenForte`), so GitHub cannot distinguish it from
@@ -533,9 +537,11 @@ number here.
   apparatus, so without it §3's guarantees stay advisory.
 
 ### D23: Patchhog **can** fail — D17 was wrong, and the threshold is severity, not count
-- Status: **APPROVED 2026-08-09** — the factual correction stands, and Stephen has answered
-  the one question it raised: **no ruleset change for now.** `patchhog/security` stays out
-  of the D21 required contexts. Revisit if the dashboard comes back. Supersedes **D17**
+- Status: **APPROVED 2026-08-09** for the factual correction, which stands unchanged.
+  **Its ruleset decision is SUPERSEDED by D24 (2026-08-09, same day):** it recorded "no
+  ruleset change for now", and Stephen then added `patchhog/security` to the ruleset. Read
+  **D24** for the current gating state; everything below about *what Patchhog does* remains
+  correct. Supersedes **D17**
 - Type: design-choice
 - Date: 2026-08-09
 - Source: Stephen, correcting the planner during the F6m discussion
@@ -603,3 +609,50 @@ number here.
   **Smallest viable alternative considered:** quietly fix the sentence in D17 and move on.
   Rejected — the log is append-only, and a superseding entry that shows *how* a bounded
   sample produced a confident wrong absolute is worth more than a clean-looking history.
+
+### D24: `patchhog/security` is now a required status check
+- Status: **APPROVED 2026-08-09** — Stephen added it to the ruleset. Supersedes the ruleset
+  half of **D23** and the Patchhog bullet in **D21**'s "deliberate omissions"
+- Type: design-choice
+- Date: 2026-08-09
+- Source: Stephen, same day as D23
+- Detail: `patchhog/security` has been added to the D21 ruleset's required contexts.
+  **Verified against the API rather than taken on report** —
+  `GET /repos/.../rules/branches/main` returns:
+
+  ```
+  ["Semgrep SAST", "Trivy Dependency & Misconfig Scan", "check", "patchhog/security"]
+  ```
+
+  This reverses D23's "no ruleset change for now", recorded a few minutes earlier the same
+  day. D23's *factual* content — that Patchhog can fail, and that the threshold is severity
+  and auto-fixability rather than finding count — is untouched and still the reason this is
+  worth gating on.
+
+  **A mechanical note that matters when rolling D21 to other repos.** `patchhog/security`
+  is a commit **status**, not a check run. GitHub's ruleset editor populates its
+  status-check suggestion dropdown from recent *check runs*, so this name **will not
+  appear there** and must be typed exactly. Typing it without explicitly adding the row
+  silently drops it — the first attempt on this repo did not save, and the API is what
+  caught it. **Verify with the API after editing a ruleset; the UI can look right and
+  have saved nothing.**
+
+  **The consequence to have in view, stated plainly.** With the dashboard still returning
+  `DEPLOYMENT_NOT_FOUND`, a red Patchhog now **blocks every PR on that base**, and the only
+  information available is the status description — a count and a severity. The documented
+  recovery is *"click Auto-PR at Patchhog"*, which runs under Stephen's own credential and
+  therefore passes through the `Repository admin` bypass, landing as a direct push to `main`
+  that skips every scanner (**PLAN §6 trap 12**). So the remedy for a Patchhog block routes
+  around the gate that Patchhog now enforces. That is coherent — the bypass exists for
+  exactly this — but it means **this gate is only as good as the dashboard**, and the value
+  of fixing the dashboard (**F6m**) went up the moment the check became required.
+
+  **The failure mode to watch:** if Patchhog ever stops posting the status at all, the
+  required context stays `pending` indefinitely and blocks every merge, with no red to
+  diagnose. The `Repository admin` bypass is the escape hatch; be aware that is what you
+  are reaching for rather than treating it as routine.
+
+  **Smallest viable alternative considered:** wait for the dashboard before requiring it.
+  Rejected by Stephen — a real gate that occasionally needs a bypass beats a real signal
+  nothing is obliged to act on. Recorded so the tradeoff is a choice on the record rather
+  than an accident.

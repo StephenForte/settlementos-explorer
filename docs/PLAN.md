@@ -131,7 +131,7 @@ F6i  replace dead Amoy rpcUrl             ✅ merged #24 (D15)
 F6j  user-configurable RPC on failure     ✅ merged #27 (D16) — closed issue #17
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
-F6m  Patchhog findings are unreadable     📋 open — D23 (supersedes D17), dashboard 404
+F6m  Patchhog findings are unreadable     📋 open — D23/D24, dashboard 404, now GATING
 F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
 F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
@@ -258,7 +258,8 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ```
 F6g ──✅ #15   F6h ──✅ #18   F6k ──✅ #20   F6l ──✅ #22
 F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n ──✅ #28 ──▶ F6o ──✅ #31 ──▶ F6p ──✅ #33  (chain complete)
-F6m  📋 blocked on the Patchhog dashboard, not on any task
+F6m  📋 blocked on the Patchhog dashboard, not on any task — and since D24 made
+     patchhog/security a required check, the dashboard is now on the merge path
 ```
 
 **Nothing is in flight.** The F6i → F6p chain is complete and `src/pages/OverviewPage.tsx`
@@ -433,7 +434,8 @@ Each of these has already cost time.
    verdict, so read the number, not the adjective — same family as trap 4 (a green Semgrep
    job isn't proof it ran) and trap 8 (a command that never ran reads as a clean result).
    **Semgrep, Trivy and Cursor Bugbot are real** — all three verified as genuine check runs
-   on #24's head. See **D23** (which supersedes **D17**) and **F6m**.
+   on #24's head. See **D23** (which supersedes **D17**), **D24** — which makes
+   `patchhog/security` a required check, so this status now blocks merges — and **F6m**.
 
 12. **Patchhog applies fixes as a direct push to `main`, which skips every scanner.**
    On 2026-08-08, commit `7b6b382` — *"Security: bump 1 vulnerable dependency (Patchhog
@@ -449,6 +451,15 @@ Each of these has already cost time.
    else will. **D21** adds a ruleset on `main` but deliberately keeps a `Repository admin`
    bypass — and since Patchhog holds Stephen's credential, that bypass covers it too, so
    this trap is not closed by the ruleset. It is mitigated only by the hand-run gate.
+
+   *Sharpened 2026-08-09 by **D24**.* `patchhog/security` is now a **required** status
+   check, which makes this trap circular rather than merely open: a red Patchhog blocks
+   every PR on that base, and the documented remedy — *"click Auto-PR at Patchhog"* — runs
+   under Stephen's credential, so it passes the `Repository admin` bypass and lands as a
+   direct push that skips every scanner. **The remedy for a Patchhog block routes around
+   the gate Patchhog now enforces.** The hand-run gate on `main` after authorising a portal
+   fix is therefore not optional hygiene any more; it is the only verification in that
+   path.
 
    *Planner error worth recording (2026-08-08).* I first read this commit as claiming to fix
    the `@hono/node-server` advisory and failing to — it bumped `nanoid` and left
