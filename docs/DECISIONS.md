@@ -26,11 +26,12 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D22`.** `D19` is assigned to **F6o** (dispatched 2026-08-08,
-optional for that task); `D20` and `D21` are below. **`D18` is retired unused** —
-pre-assigned to F6n, published, and correctly declined because there was no design fork;
-burned rather than recycled, as `F6e` was. Take `D22` only from the plan, never by reading
-for the highest number here.
+**Next free identifier: `D23`.** `D22` is assigned to **F6p** (dispatched 2026-08-09,
+optional for that task); `D20` and `D21` are below. **`D18` and `D19` are both retired
+unused** — pre-assigned to F6n and F6o respectively, published in those dispatches, and
+correctly declined because neither task hit a design fork: each used the mechanism its
+dispatch specified. Burned rather than recycled, as `F6e` was. Take `D23` only from the
+plan, never by reading for the highest number here.
 
 ---
 
