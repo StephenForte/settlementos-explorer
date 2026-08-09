@@ -19,7 +19,14 @@ import { BalanceChips } from '../components/BalanceChips'
 import { CopyButton } from '../components/CopyButton'
 import { ExplorerLink } from '../components/ExplorerLink'
 import { RoleBadge } from '../components/RoleBadge'
+import { RpcOverrideForm } from '../components/RpcOverrideForm'
 import { useNetworkParam } from '../hooks/useNetworkParam'
+import { getRpcOverride } from '../lib/rpc-overrides'
+
+function hasUnavailable(balances: AddressBalances): boolean {
+  if (balances.native.status === 'unavailable') return true
+  return balances.tokens.some((t) => t.status === 'unavailable')
+}
 
 export function OverviewPage() {
   const { networkId } = useNetworkParam()
@@ -28,6 +35,10 @@ export function OverviewPage() {
   const [balances, setBalances] = useState<Record<string, AddressBalances>>({})
   const [balancesLoaded, setBalancesLoaded] = useState(0)
   const [balancesStartedAt, setBalancesStartedAt] = useState<number | null>(null)
+  // Primitive reload token — bump only from RpcOverrideForm onChanged.
+  // Do not derive this from render-time identity (objects, Date.now(), etc.)
+  // or the effect will fan out getBalances in a loop (PLAN §6 trap 9 / D14).
+  const [balanceReloadToken, setBalanceReloadToken] = useState(0)
 
   const filtered = useMemo(
     () => filterAddressEntries(entries, query),
@@ -58,7 +69,7 @@ export function OverviewPage() {
     return () => {
       cancelled = true
     }
-  }, [entries, networkId])
+  }, [entries, networkId, balanceReloadToken])
 
   const grouped = useMemo(() => {
     const map = new Map<string, AddressEntry[]>()
@@ -76,6 +87,12 @@ export function OverviewPage() {
       : loadingBalances
         ? `Loading balances ${balancesLoaded}/${entries.length}…`
         : null
+
+  // Page-level control (one override per network). Mount only when useful so
+  // defaultOpen applies on first paint of the failure — BalanceChips-style.
+  const showRpcOverride =
+    Boolean(getRpcOverride(networkId)) ||
+    Object.values(balances).some(hasUnavailable)
 
   return (
     <div className="page">
@@ -112,6 +129,16 @@ export function OverviewPage() {
           {freshnessLabel ? ` · ${freshnessLabel}` : null}
         </p>
       </section>
+
+      {showRpcOverride ? (
+        <section className="section" aria-label="RPC endpoint override">
+          <RpcOverrideForm
+            networkId={networkId}
+            defaultOpen
+            onChanged={() => setBalanceReloadToken((n) => n + 1)}
+          />
+        </section>
+      ) : null}
 
       {entries.length === 0 ? (
         <section className="section">
