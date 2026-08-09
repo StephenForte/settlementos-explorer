@@ -19,7 +19,7 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `68352b6` | after #38. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| `main` | `e2af36b` | after #39. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
 | Test suite | **137 total** — `137 passed / 0 skipped` on the ForteL2 host, `136 passed / 1 skipped` anywhere else | `npm test` on `pr38` (= `ed4dbee`) in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 36ms, Base 1284ms, Amoy 4640ms, real `eth_getCode` |
 | `npm audit` | **`found 0 vulnerabilities`** | re-run by the reviewer on `pr38` in an isolated clone after `npm ci` (exit 0). Cleared by F6q — see **D25** |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
@@ -40,6 +40,8 @@ method is named — "verified" without a method is how plans start lying.
 | F6o — Overview RPC override + reload | **Done** | #31 → `651e7d4`; reviewer re-ran four mutations — dropping the reload token from the dep array turns 3 tests red, adding `query` turns 1 red, a genuine two-tick double refresh turns 2 red, and an unstable object dep dies on heap exhaustion rather than passing quietly. The PR's own claimed mutation was vacuous (§6 trap 13) |
 | F6p — sticky Overview override control | **Done** | #33 → `e1ab6d7`; the worker's own mutation re-run by the reviewer and it genuinely goes red. Two further probes: no control leak from the previous network *during* the next one's load (the window their test skipped), and the render-time latch is stable under `StrictMode` across a broken→healthy→broken→healthy round trip, 0 re-render errors |
 | F6q — clear GHSA-frvp-7c67-39w9 | **Done** | #38 → `ed4dbee`; `npm audit` 2 moderate → **0**. Reviewer re-proved the override is load-bearing: from `main`'s lockfile, bumping the SDK **alone** leaves `@hono/node-server` at `1.19.14` and the advisory survives. MCP server booted and `tools/list` + 2 tool calls exercised over hono 2.1.0; auth boundary re-probed 401/401/200 |
+| F6m — Patchhog findings unreadable | **Closed 2026-08-09** | resolved at source: Patchhog reports `Clean scan: **0 findings**` on `e2af36b` — nothing left to read. D26 |
+| All four scanners on `main` | **Green, and read rather than assumed** | `patchhog/security` `success — Clean scan: 0 findings`; Semgrep `Findings: 0 (0 blocking)`; Trivy `success`; `check` `success`. Semgrep/Trivy ran on `9c66892` (#39's head, the commit that merged) |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -133,7 +135,7 @@ F6i  replace dead Amoy rpcUrl             ✅ merged #24 (D15)
 F6j  user-configurable RPC on failure     ✅ merged #27 (D16) — closed issue #17
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
-F6m  Patchhog findings are unreadable     📋 open — D23/D24; smaller since F6q (see below)
+F6m  Patchhog findings are unreadable     ✅ closed 2026-08-09 — D26; resolved, not abandoned
 F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
 F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
@@ -262,32 +264,37 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ```
 F6g ──✅ #15   F6h ──✅ #18   F6k ──✅ #20   F6l ──✅ #22
 F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n ──✅ #28 ──▶ F6o ──✅ #31 ──▶ F6p ──✅ #33  (chain complete)
-F6m  📋 open, and smaller than it looks — see below. Not blocked on the dashboard.
+F6m  ✅ closed — Patchhog at 0 findings; nothing left unreadable (D26)
 ```
 
-**F6m does not need the dashboard, and that was a planner error worth recording.** For
-most of 2026-08-09 this plan described F6m as *blocked* on the dead Patchhog dashboard.
-Stephen corrected it: **Patchhog's findings are dependency advisories, which are
+**F6m is closed — resolved, not abandoned (2026-08-09).** Patchhog now reports
+`Clean scan: **0 findings**` on `main` (`e2af36b`), the first zero in the repo's history.
+There is nothing left to be unreadable, so the task's substance is gone rather than
+deferred. Recorded as **D26**. The dashboard is still `DEPLOYMENT_NOT_FOUND` and that is
+now accepted permanently — see D26 for why that costs nothing.
+
+**Two planner errors on the way there, both worth keeping.** First, F6m was written on the
+claim that Patchhog *could not fail*; Stephen had seen it red, and **D23** corrected it
+from full history rather than the sampled window that produced the error (§6 trap 11).
+Second, for most of 2026-08-09 this plan called F6m *blocked* on the dead dashboard.
+Stephen corrected that too: **Patchhog's findings are dependency advisories, which are
 independently discoverable** — `npm audit` against the committed lockfile names the
-package, the GHSA, the severity and the fix version, with no Patchhog UI involved. **D20
-had already proved this**, having adjudicated GHSA-frvp-7c67-39w9 in full from the
-lockfile and `node_modules`. The dashboard is Patchhog's *presentation*, never its source
-of truth, and treating a dead UI as a blocker parked an actionable task for a day. F6q
-(#38) is the demonstration: found by `npm audit`, decided against D20, fixed, verified,
-merged — dashboard never consulted.
+package, the GHSA, the severity and the fix version with no Patchhog UI involved, and
+**D20 had already proved it** by adjudicating GHSA-frvp-7c67-39w9 entirely from the
+lockfile. Treating a dead UI as a blocker parked an actionable task for a day. **F6q (#38)
+is the demonstration:** found by `npm audit`, decided against D20, fixed, verified and
+merged with the dashboard never once consulted.
 
-**What is left of F6m** is therefore not "wait for a host to come back". `main` now audits
-clean (**D25**), so the next red on the required `patchhog/security` check is a **new**
-finding rather than standing noise — which is most of the value the dashboard would have
-provided. The residue is genuinely small: whether the four historical high/critical
-failures (all pre-#5, all on commits Patchhog itself authored) hold anything not already
-fixed, and whether Patchhog earns its place in §3 now that `npm audit` and a required
-check cover the same ground. **Neither is urgent, and neither needs the dashboard.**
+**What closed the two residues.** The four historical high/critical failures were all
+pre-#5, all on commits Patchhog itself authored, and are all reflected in a count that is
+now zero — whatever they were is fixed, and recovering the detail is archaeology with no
+action attached. Whether Patchhog earns its §3 slot was answered by **D24**: it is a
+required status check. Neither residue survives.
 
-**Nothing is in flight.** The F6i → F6p chain is complete and `src/pages/OverviewPage.tsx`
-is unowned, so the next task can take it without queueing. **F6m is the only open task**,
-and it is blocked on an external dashboard rather than on any file, so it constrains
-nothing. Any new work can start in parallel — the constraint to re-check first is
+**Nothing is in flight, and there are no open tasks.** The F6i → F6p chain is complete,
+F6q and F6m are closed, and `src/pages/OverviewPage.tsx` and the dependency files are
+unowned — the next task can take anything without queueing. The constraint to re-check
+first is
 `src/components/BalanceChips.tsx` and `RpcOverrideForm.tsx`, which are shared with three
 pages: changing their gating or props forces every caller to change and puts a task
 outside a reviewable diff (the F6j lesson in §2).
@@ -447,17 +454,20 @@ Each of these has already cost time.
    was one API call away. Before writing "X never happens", ask what window you actually
    looked at and whether X would have been *inside* it.
 
-   **What still holds:** the dashboard host returns `DEPLOYMENT_NOT_FOUND` (re-checked
-   2026-08-09, root and per-scan paths), so no finding it has ever reported is readable —
-   including the four high/critical failures. Only the count and severity survive, in the
-   status description. That is the live half, and **F6m** is blocked on it.
+   **What still holds, and what stopped mattering:** the dashboard host returns
+   `DEPLOYMENT_NOT_FOUND` (re-checked 2026-08-09), so no finding it ever reported is
+   readable — only the count and severity, in the status description. That was the live
+   half until Patchhog reached **0 findings** on `main`; with nothing left to read, the
+   gap costs nothing and **F6m is closed (D26)**. `npm audit` is the system of record for
+   the detail; the status is the gate.
 
    Still true of the neighbours: the word "Clean" in `Clean scan: 4 findings` is not a
    verdict, so read the number, not the adjective — same family as trap 4 (a green Semgrep
    job isn't proof it ran) and trap 8 (a command that never ran reads as a clean result).
    **Semgrep, Trivy and Cursor Bugbot are real** — all three verified as genuine check runs
    on #24's head. See **D23** (which supersedes **D17**), **D24** — which makes
-   `patchhog/security` a required check, so this status now blocks merges — and **F6m**.
+   `patchhog/security` a required check, so this status now blocks merges — and **D26**,
+   which closes F6m at 0 findings.
 
 12. **Patchhog applies fixes as a direct push to `main`, which skips every scanner.**
    On 2026-08-08, commit `7b6b382` — *"Security: bump 1 vulnerable dependency (Patchhog
