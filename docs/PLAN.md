@@ -19,8 +19,9 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `d04300f` + #33 | this PR is written to land after #33. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
-| Test suite | **137 total** — `137 passed / 0 skipped` on the ForteL2 host, `136 passed / 1 skipped` anywhere else | `npm test` on `pr33` (= `e1ab6d7`) in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 295ms, Base 1153ms, Amoy 4378ms, real `eth_getCode` |
+| `main` | `68352b6` | after #38. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **137 total** — `137 passed / 0 skipped` on the ForteL2 host, `136 passed / 1 skipped` anywhere else | `npm test` on `pr38` (= `ed4dbee`) in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 36ms, Base 1284ms, Amoy 4640ms, real `eth_getCode` |
+| `npm audit` | **`found 0 vulnerabilities`** | re-run by the reviewer on `pr38` in an isolated clone after `npm ci` (exit 0). Cleared by F6q — see **D25** |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
@@ -38,6 +39,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6n — superseded-epoch cache guard | **Done** | #28 → `62b9548`; reviewer reverted `cache.ts` to `main` keeping the new tests and **both** epoch tests went red, incl. the `inflight.delete` case no bot reported. Purely additive test file (zero deletions) |
 | F6o — Overview RPC override + reload | **Done** | #31 → `651e7d4`; reviewer re-ran four mutations — dropping the reload token from the dep array turns 3 tests red, adding `query` turns 1 red, a genuine two-tick double refresh turns 2 red, and an unstable object dep dies on heap exhaustion rather than passing quietly. The PR's own claimed mutation was vacuous (§6 trap 13) |
 | F6p — sticky Overview override control | **Done** | #33 → `e1ab6d7`; the worker's own mutation re-run by the reviewer and it genuinely goes red. Two further probes: no control leak from the previous network *during* the next one's load (the window their test skipped), and the render-time latch is stable under `StrictMode` across a broken→healthy→broken→healthy round trip, 0 re-render errors |
+| F6q — clear GHSA-frvp-7c67-39w9 | **Done** | #38 → `ed4dbee`; `npm audit` 2 moderate → **0**. Reviewer re-proved the override is load-bearing: from `main`'s lockfile, bumping the SDK **alone** leaves `@hono/node-server` at `1.19.14` and the advisory survives. MCP server booted and `tools/list` + 2 tool calls exercised over hono 2.1.0; auth boundary re-probed 401/401/200 |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -131,16 +133,17 @@ F6i  replace dead Amoy rpcUrl             ✅ merged #24 (D15)
 F6j  user-configurable RPC on failure     ✅ merged #27 (D16) — closed issue #17
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
-F6m  Patchhog findings are unreadable     📋 open — D23/D24, dashboard 404, now GATING
+F6m  Patchhog findings are unreadable     📋 open — D23/D24; smaller since F6q (see below)
 F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
 F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
-F6q  (next free identifier)
+F6q  clear GHSA-frvp-7c67-39w9          ✅ merged #38 (D25)
+F6r  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6q`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6r`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
@@ -199,6 +202,7 @@ Ownership is what keeps parallel agents from colliding. State it per task.
 | `src/lib/rpc-overrides.ts`, `src/lib/clients.ts` | RPC-resolution tasks | override precedence + client cache; **must stay above `NETWORKS`** (D16) |
 | `src/lib/cache.ts` | F6n (landed) | epoch guard — **do not modify**; correct and freshly reviewed |
 | `src/pages/OverviewPage.tsx` | **unowned** (F6o #31, F6p #33 landed) | **do not change the balance effect's dep array** — it must stay `[entries, networkId, balanceReloadToken]`, and do not derive the sticky latch from render-time identity. Either one reopens the fan-out loop that D14 turns into silent skips |
+| `package.json`, `package-lock.json` | **unowned** (F6q #38 landed) | highest-blast-radius pair in the repo. The `overrides` entry pinning `@hono/node-server` is **load-bearing** — see **D25** before removing it, and always re-run `npm ci` + `npm audit` after touching either file |
 
 **Append-only shared files that will conflict anyway:** `DECISIONS.md` (every
 worker appends at the end), and the `ROLES` array in `server/mcp/server.ts`.
@@ -258,9 +262,27 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 ```
 F6g ──✅ #15   F6h ──✅ #18   F6k ──✅ #20   F6l ──✅ #22
 F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n ──✅ #28 ──▶ F6o ──✅ #31 ──▶ F6p ──✅ #33  (chain complete)
-F6m  📋 blocked on the Patchhog dashboard, not on any task — and since D24 made
-     patchhog/security a required check, the dashboard is now on the merge path
+F6m  📋 open, and smaller than it looks — see below. Not blocked on the dashboard.
 ```
+
+**F6m does not need the dashboard, and that was a planner error worth recording.** For
+most of 2026-08-09 this plan described F6m as *blocked* on the dead Patchhog dashboard.
+Stephen corrected it: **Patchhog's findings are dependency advisories, which are
+independently discoverable** — `npm audit` against the committed lockfile names the
+package, the GHSA, the severity and the fix version, with no Patchhog UI involved. **D20
+had already proved this**, having adjudicated GHSA-frvp-7c67-39w9 in full from the
+lockfile and `node_modules`. The dashboard is Patchhog's *presentation*, never its source
+of truth, and treating a dead UI as a blocker parked an actionable task for a day. F6q
+(#38) is the demonstration: found by `npm audit`, decided against D20, fixed, verified,
+merged — dashboard never consulted.
+
+**What is left of F6m** is therefore not "wait for a host to come back". `main` now audits
+clean (**D25**), so the next red on the required `patchhog/security` check is a **new**
+finding rather than standing noise — which is most of the value the dashboard would have
+provided. The residue is genuinely small: whether the four historical high/critical
+failures (all pre-#5, all on commits Patchhog itself authored) hold anything not already
+fixed, and whether Patchhog earns its place in §3 now that `npm audit` and a required
+check cover the same ground. **Neither is urgent, and neither needs the dashboard.**
 
 **Nothing is in flight.** The F6i → F6p chain is complete and `src/pages/OverviewPage.tsx`
 is unowned, so the next task can take it without queueing. **F6m is the only open task**,
