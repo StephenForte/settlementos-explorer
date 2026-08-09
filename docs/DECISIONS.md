@@ -26,13 +26,13 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D23`.** `D20` and `D21` are below. **`D18`, `D19` and `D22` are
+**Next free identifier: `D24`.** `D20`, `D21` and `D23` are below. **`D18`, `D19` and `D22` are
 all retired unused** — pre-assigned to F6n, F6o and F6p respectively, published in those
 dispatches, and correctly declined because none of the three hit a design fork: each used
 the mechanism its dispatch specified. Burned rather than recycled, as `F6e` was. Three
 retirements in a row is the pre-assignment rule working, not waste — an optional
 identifier costs one line in a dispatch and removes the chance of two parallel workers
-claiming the same number. Take `D23` only from the plan, never by reading for the highest
+claiming the same number. Take `D24` only from the plan, never by reading for the highest
 number here.
 
 ---
@@ -373,7 +373,11 @@ number here.
   the planner marks its status at merge.
 
 ### D17: Patchhog's status is not a scan result, and its findings are unrecoverable
-- Status: **OPEN** — Stephen is restoring the dashboard deployment; revisit once it answers
+- Status: **SUPERSEDED by D23 (2026-08-09)** — its central claim, that the status *cannot
+  fail*, is **false**. Patchhog has posted `failure` four times. The unreadable-findings
+  half of this entry still holds and is carried forward in D23. Read D23 first; this entry
+  is kept unedited below because the log is append-only and the reasoning error is worth
+  seeing intact.
 - Type: scope-question
 - Date: 2026-08-08
 - Source: F6m / planner audit of PRs #5–#25
@@ -508,6 +512,14 @@ number here.
     and `success` at 4 — no threshold, so requiring it gates on a value that is always
     green. Making a tool nobody can read into a merge gate is worse than not having it.
 
+    > **Rationale corrected 2026-08-09 — see D23.** The premise above is **wrong**:
+    > Patchhog *does* have a threshold and *has* failed four times. The decision to leave
+    > it out of the required contexts stands, but for a different reason — a red Patchhog
+    > links to a dead dashboard, so a blocked merge could not be triaged. That is a
+    > defensible reason not to gate; "it is always green" was not. **Whether it should now
+    > become a required check is an open question for Stephen**, and the answer depends on
+    > the dashboard, not on this ruleset.
+
   **Known and accepted limitation.** Patchhog holds Stephen's own credential (the `7b6b382`
   push was authored *and* committed as `StephenForte`), so GitHub cannot distinguish it from
   him. A `Repository admin` bypass is therefore also a bypass for Patchhog: portal-applied
@@ -519,3 +531,68 @@ number here.
   **Smallest viable alternative considered:** block force pushes and deletions only, and
   skip the PR requirement. Rejected — the PR is what triggers the entire scanning
   apparatus, so without it §3's guarantees stay advisory.
+
+### D23: Patchhog **can** fail — D17 was wrong, and the threshold is severity, not count
+- Status: **OPEN** — the correction is settled and not in question; what remains open is
+  Stephen's call on whether `patchhog/security` should become a required check (see the
+  end of this entry). Supersedes **D17**
+- Type: design-choice
+- Date: 2026-08-09
+- Source: Stephen, correcting the planner during the F6m discussion
+- Detail: **D17 claimed the `patchhog/security` status "cannot fail" and "has no
+  threshold". Both are false.** Stephen said he had seen it return red; he was right.
+  Queried across every commit reachable from `main`, it has posted `failure` four times:
+
+  | Commit | Date | State | Description |
+  |---|---|---|---|
+  | `a436ecf` | 2026-07-28 | **failure** | `1 auto-fixable high+critical — click Auto-PR at Patchhog` |
+  | `e77fb13` | 2026-08-03 | **failure** | same |
+  | `1d7b24d` | 2026-08-03 | **failure** | same |
+  | `f76ebaa` | 2026-08-03 | **failure** | same |
+
+  **The threshold is severity and auto-fixability, not the finding count.** There are two
+  description formats, and they map to the two states:
+
+  - `failure` → `N auto-fixable high+critical — click Auto-PR at Patchhog`
+  - `success` → `Clean scan: N findings`
+
+  This is what actually explains `Clean scan: 4 findings` passing on #6, which D17 read as
+  proof of no threshold: those four were simply not auto-fixable high/critical. The gate is
+  real and it has fired.
+
+  **Why the D17 audit missed it — the reasoning error worth keeping.** D17 sampled
+  **PRs #5–#25**. PR #5 opened 2026-08-08, four days after the last failure, by which point
+  the portal had already auto-fixed every high/critical on `main`. **A window that begins
+  after the fixes cannot contain the failures it is being used to rule out.** The data was
+  accurate; the error was stating an absolute ("cannot fail") from a bounded sample, when
+  full history was one API call away. Generalised in PLAN §6 trap 11.
+
+  **What from D17 still stands.** The findings remain **unreadable**. Every `target_url`,
+  including the four attached to these failures, points at `patchr-eight.vercel.app`,
+  re-checked 2026-08-09 at both the root and a specific scan path:
+
+  ```
+  HTTP/2 404
+  x-vercel-error: DEPLOYMENT_NOT_FOUND
+  ```
+
+  So roughly twenty scans' worth of detail is still lost, **F6m remains blocked on the
+  dashboard**, and nobody has yet seen what any of it found — including what the four
+  high/critical failures were about. That half of D17 is carried forward unchanged.
+
+  **Two smaller facts this surfaced.** The failures sit on commits **Patchhog itself
+  authored** (`Security: bump N vulnerable dependencies`), and the failing description
+  names the mechanism behind PLAN §6 trap 12: `click Auto-PR at Patchhog`. Nothing was
+  blocked at the time because the PR-based contract and the D21 ruleset both post-date
+  those commits.
+
+  **What is actually open, and it is Stephen's call:** now that the status is known to be a
+  real gate, should `patchhog/security` join the required contexts in the D21 ruleset? The
+  argument against is no longer "it is always green" — that was the wrong reason and is
+  corrected in D21. It is that **a red Patchhog links to a dead dashboard**, so a blocked
+  merge could not be triaged. If the dashboard comes back, that objection goes with it and
+  requiring the check becomes the obvious move.
+
+  **Smallest viable alternative considered:** quietly fix the sentence in D17 and move on.
+  Rejected — the log is append-only, and a superseding entry that shows *how* a bounded
+  sample produced a confident wrong absolute is worth more than a clean-looking history.

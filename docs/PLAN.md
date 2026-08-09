@@ -131,7 +131,7 @@ F6i  replace dead Amoy rpcUrl             ✅ merged #24 (D15)
 F6j  user-configurable RPC on failure     ✅ merged #27 (D16) — closed issue #17
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
-F6m  Patchhog reports nothing readable    📋 open — D17, waiting on the dashboard
+F6m  Patchhog findings are unreadable     📋 open — D23 (supersedes D17), dashboard 404
 F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
 F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
@@ -405,17 +405,35 @@ Each of these has already cost time.
    do writes through the GitHub API or in a throwaway clone. A `git status` check
    is not an interlock — it is true for one instant.
 
-11. **A green Patchhog status is not a scan result — it cannot fail.** `patchhog/security`
-   is a commit *status*, not a check run, and not any workflow in `.github/workflows`.
-   Across PRs #5–#25 it posted state `success` with a description beginning
-   `Clean scan:` **every single time, including "Clean scan: 4 findings" on #6** — the
-   word "Clean" and the `success` state are independent of the count. Its dashboard host
-   also returns `DEPLOYMENT_NOT_FOUND`, so no finding it ever reported has been readable.
-   §3 still lists it among the things a PR triggers, which is true but implies coverage
-   we do not currently have. Same shape as trap 4 (a green Semgrep job isn't proof it
-   ran) and trap 8 (a command that never ran reads as a clean result). **Semgrep, Trivy
-   and Cursor Bugbot are real** — all three verified as genuine check runs on #24's head.
-   See **D17** and **F6m**.
+11. **Do not conclude "never happens" from a window that starts after it stopped
+   happening.** `patchhog/security` is a commit *status*, not a check run, and not any
+   workflow in `.github/workflows`. Across PRs #5–#25 it posted `success` **every single
+   time, including "Clean scan: 4 findings" on #6**, and the planner concluded from that
+   run of greens that the status **could not fail** and had no threshold. **That was
+   wrong, and Stephen corrected it** — it has posted `failure` four times
+   (`a436ecf`, `e77fb13`, `1d7b24d`, `f76ebaa`, 2026-07-28 → 08-04), and the threshold is
+   **severity and auto-fixability, not the finding count**: `failure` reads
+   `N auto-fixable high+critical`, `success` reads `Clean scan: N findings`. Which is why
+   4 findings passed — none were auto-fixable high/critical.
+
+   **The methodological trap, which generalises past Patchhog:** the sample was PRs
+   #5–#25, and #5 opened four days *after* the last failure, by which point the portal had
+   already auto-fixed every high/critical on `main`. **A window that begins after the
+   fixes cannot contain the failures it is being used to rule out.** The observations were
+   all accurate; the error was stating an absolute from a bounded sample when full history
+   was one API call away. Before writing "X never happens", ask what window you actually
+   looked at and whether X would have been *inside* it.
+
+   **What still holds:** the dashboard host returns `DEPLOYMENT_NOT_FOUND` (re-checked
+   2026-08-09, root and per-scan paths), so no finding it has ever reported is readable —
+   including the four high/critical failures. Only the count and severity survive, in the
+   status description. That is the live half, and **F6m** is blocked on it.
+
+   Still true of the neighbours: the word "Clean" in `Clean scan: 4 findings` is not a
+   verdict, so read the number, not the adjective — same family as trap 4 (a green Semgrep
+   job isn't proof it ran) and trap 8 (a command that never ran reads as a clean result).
+   **Semgrep, Trivy and Cursor Bugbot are real** — all three verified as genuine check runs
+   on #24's head. See **D23** (which supersedes **D17**) and **F6m**.
 
 12. **Patchhog applies fixes as a direct push to `main`, which skips every scanner.**
    On 2026-08-08, commit `7b6b382` — *"Security: bump 1 vulnerable dependency (Patchhog
