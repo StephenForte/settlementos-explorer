@@ -26,12 +26,14 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D23`.** `D22` is assigned to **F6p** (dispatched 2026-08-09,
-optional for that task); `D20` and `D21` are below. **`D18` and `D19` are both retired
-unused** — pre-assigned to F6n and F6o respectively, published in those dispatches, and
-correctly declined because neither task hit a design fork: each used the mechanism its
-dispatch specified. Burned rather than recycled, as `F6e` was. Take `D23` only from the
-plan, never by reading for the highest number here.
+**Next free identifier: `D23`.** `D20` and `D21` are below. **`D18`, `D19` and `D22` are
+all retired unused** — pre-assigned to F6n, F6o and F6p respectively, published in those
+dispatches, and correctly declined because none of the three hit a design fork: each used
+the mechanism its dispatch specified. Burned rather than recycled, as `F6e` was. Three
+retirements in a row is the pre-assignment rule working, not waste — an optional
+identifier costs one line in a dispatch and removes the chance of two parallel workers
+claiming the same number. Take `D23` only from the plan, never by reading for the highest
+number here.
 
 ---
 
