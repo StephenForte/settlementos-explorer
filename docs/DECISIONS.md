@@ -26,13 +26,13 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D25`.** `D20`, `D21`, `D23` and `D24` are below. **`D18`, `D19` and `D22` are
+**Next free identifier: `D26`.** `D20`, `D21`, `D23`, `D24` and `D25` are below. **`D18`, `D19` and `D22` are
 all retired unused** — pre-assigned to F6n, F6o and F6p respectively, published in those
 dispatches, and correctly declined because none of the three hit a design fork: each used
 the mechanism its dispatch specified. Burned rather than recycled, as `F6e` was. Three
 retirements in a row is the pre-assignment rule working, not waste — an optional
 identifier costs one line in a dispatch and removes the chance of two parallel workers
-claiming the same number. Take `D25` only from the plan, never by reading for the highest
+claiming the same number. Take `D26` only from the plan, never by reading for the highest
 number here.
 
 ---
@@ -656,3 +656,59 @@ number here.
   Rejected by Stephen — a real gate that occasionally needs a bypass beats a real signal
   nothing is obliged to act on. Recorded so the tradeoff is a choice on the record rather
   than an accident.
+
+### D25: pin `@hono/node-server` to 2.1.0 via `overrides`, under MCP SDK 1.30.0
+- Status: **APPROVED 2026-08-09** — landed in #38 (F6q). Written by the planner; the worker
+  correctly proposed it and did not edit this file
+- Type: new-dependency
+- Date: 2026-08-09
+- Source: F6q, PR #38
+- Detail: `package.json` gains an `overrides` entry pinning `@hono/node-server` to **2.1.0**,
+  alongside `@modelcontextprotocol/sdk` `^1.29.0 → ^1.30.0`. `npm audit` goes from **2
+  moderate to 0**.
+
+  **Why the override is required, proved rather than asserted.** SDK 1.30.0 widens its
+  dependency range from `^1.19.9` to `^1.19.9 || ^2.0.5`. Because the installed `1.19.14`
+  still satisfies the widened range, npm's lockfile stickiness keeps it. Re-run by the
+  reviewer from `main`'s lockfile with the SDK bumped and **no** override:
+
+  ```
+  BEFORE hono -> 1.19.14
+  AFTER  hono -> 1.19.14      (unchanged)
+  npm audit: 1 moderate severity vulnerability (GHSA-frvp-7c67-39w9)
+  ```
+
+  So the bump alone does not clear the advisory. The override is what selects the 2.x half
+  of a range the SDK itself declares support for.
+
+  **Why 2.1.0 and not 2.0.5.** `^2.0.5` is the minimum the SDK's range implies, and it is
+  the version a careful person would naturally land on — but it sits inside a *second*
+  advisory, **GHSA-9mqv-5hh9-4cgg** (`@hono/node-server` unauthenticated memory-leak DoS
+  via aborted WebSocket handshake, `>= 2.0.0, <= 2.0.9`, patched `2.0.10`), confirmed
+  against the GitHub advisory API during review. Taking the range minimum would have traded
+  one moderate for another. **2.1.0 audits clean.**
+
+  **This does not overturn D20, and nothing in D20 is retracted.** D20 approved *no code
+  change* on a reachability argument — nothing imports `serveStatic`, the app is not served
+  from Windows — and that argument still holds; it was re-verified on `93aae29`. D20 also
+  rejected forcing an **unsupported** major, which is a different act from selecting a
+  version the SDK now declares. This change is **signal hygiene for D24**: with
+  `patchhog/security` a required check, a permanent known-benign moderate is noise against
+  a gate, and clearing it means the next red is a genuinely new finding.
+
+  **Removal condition — this override is temporary by design.** Delete it once
+  `@modelcontextprotocol/sdk` depends on `>= 2.1.0` outright, at which point it is
+  redundant and merely pins a transitive dependency the SDK did not choose. Until then it
+  is load-bearing: **check the proof above before removing it**, because the failure mode
+  is silent — the advisory simply returns.
+
+  **Residual risk, carried knowingly.** `@hono/node-server` stays on the MCP request path
+  via `getRequestListener`, and `server/mcp/server.ts` has no dedicated unit test, so a
+  future 2.x break would surface at runtime rather than in the 137-test count. Mitigated
+  during review by exercising the real path: server booted, `tools/list` returned all six
+  tools, `summarize_explorer` and `list_networks` both returned data with `isError: false`,
+  and the auth boundary was re-probed at **401 / 401 / 200**. That is a hand check, not a
+  regression test — a dedicated `server.ts` assembly test remains an open gap.
+
+  **Smallest viable alternative considered:** bump the SDK and stop. Rejected — proved above
+  to leave the advisory in place.
