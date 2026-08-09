@@ -516,9 +516,9 @@ number here.
     > Patchhog *does* have a threshold and *has* failed four times. The decision to leave
     > it out of the required contexts stands, but for a different reason — a red Patchhog
     > links to a dead dashboard, so a blocked merge could not be triaged. That is a
-    > defensible reason not to gate; "it is always green" was not. **Whether it should now
-    > become a required check is an open question for Stephen**, and the answer depends on
-    > the dashboard, not on this ruleset.
+    > defensible reason not to gate; "it is always green" was not. **Stephen confirmed
+    > 2026-08-09: no ruleset change for now** — this exclusion stands as written, on the
+    > corrected reasoning. Reopen if the dashboard comes back.
 
   **Known and accepted limitation.** Patchhog holds Stephen's own credential (the `7b6b382`
   push was authored *and* committed as `StephenForte`), so GitHub cannot distinguish it from
@@ -533,9 +533,9 @@ number here.
   apparatus, so without it §3's guarantees stay advisory.
 
 ### D23: Patchhog **can** fail — D17 was wrong, and the threshold is severity, not count
-- Status: **OPEN** — the correction is settled and not in question; what remains open is
-  Stephen's call on whether `patchhog/security` should become a required check (see the
-  end of this entry). Supersedes **D17**
+- Status: **APPROVED 2026-08-09** — the factual correction stands, and Stephen has answered
+  the one question it raised: **no ruleset change for now.** `patchhog/security` stays out
+  of the D21 required contexts. Revisit if the dashboard comes back. Supersedes **D17**
 - Type: design-choice
 - Date: 2026-08-09
 - Source: Stephen, correcting the planner during the F6m discussion
@@ -586,12 +586,19 @@ number here.
   blocked at the time because the PR-based contract and the D21 ruleset both post-date
   those commits.
 
-  **What is actually open, and it is Stephen's call:** now that the status is known to be a
-  real gate, should `patchhog/security` join the required contexts in the D21 ruleset? The
-  argument against is no longer "it is always green" — that was the wrong reason and is
-  corrected in D21. It is that **a red Patchhog links to a dead dashboard**, so a blocked
-  merge could not be triaged. If the dashboard comes back, that objection goes with it and
-  requiring the check becomes the obvious move.
+  **The question this raised, and Stephen's answer.** Now that the status is known to be a
+  real gate, should `patchhog/security` join the required contexts in the D21 ruleset?
+  **Decided 2026-08-09: no, not yet.** The D21 ruleset is unchanged.
+
+  The reasoning matters more than the verdict, because the verdict is the same one D21
+  reached for a wrong reason. **Requiring it now would gate merges on a status whose red
+  state is untriageable** — the failure description gives a count and a severity, and the
+  link goes to a 404. A required check you cannot investigate converts a security signal
+  into a merge blocker with no path forward, and the likely outcome is someone using the
+  `Repository admin` bypass reflexively, which erodes the bypass for the cases that need
+  it. **This is a decision about the dashboard, not about Patchhog's value.** If the
+  dashboard returns, the objection disappears and requiring the check becomes the obvious
+  move — that is the trigger to reopen this, and it is what **F6m** is waiting on.
 
   **Smallest viable alternative considered:** quietly fix the sentence in D17 and move on.
   Rejected — the log is append-only, and a superseding entry that shows *how* a bounded
