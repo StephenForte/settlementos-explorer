@@ -424,7 +424,9 @@ number here.
   looked at what.
 
 ### D20: the `@hono/node-server` path-traversal advisory needs no code change here
-- Status: **OPEN** — recorded by the planner; Stephen confirms the risk acceptance
+- Status: **APPROVED 2026-08-08** — Stephen confirmed: no code change. Reopen only if the
+  reachability analysis below stops holding (i.e. something starts importing `serveStatic`,
+  or the app is ever served from Windows)
 - Type: bug-found-elsewhere
 - Date: 2026-08-08
 - Source: Patchhog security report; verified by the planner on `7b6b382`
@@ -455,10 +457,11 @@ number here.
   on our live MCP request path. That trades an unreachable Windows-only path traversal for
   a real risk of breaking the MCP transport at runtime.
 
-  **Decision: no code change.** Revisit when `@modelcontextprotocol/sdk` widens its range
-  to accept `2.x`, at which point the bump is ordinary maintenance rather than a forced
-  override. Marked `OPEN` deliberately so no worker "helpfully" adds the override —
-  workers must not act on an `OPEN` entry.
+  **Decision: no code change**, confirmed by Stephen on 2026-08-08. Revisit when
+  `@modelcontextprotocol/sdk` widens its range to accept `2.x`, at which point the bump is
+  ordinary maintenance rather than a forced override. **Do not add the `overrides` pin** —
+  it is not an improvement, and a future scanner report citing this package should be
+  checked against the table above before anyone acts on it.
 
   **Smallest viable alternative considered:** add the `overrides` pin anyway to silence the
   scanner. Rejected — silencing a scanner is not a security outcome, and the change is
