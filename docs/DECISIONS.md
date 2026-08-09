@@ -26,9 +26,11 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D19`.** `D18` is assigned to **F6n** (dispatched 2026-08-08,
-not yet written, and optional for that task). Take `D19` only from the plan, never by
-reading for the highest number here.
+**Next free identifier: `D21`.** `D19` is assigned to **F6o** (dispatched 2026-08-08,
+optional for that task); `D20` is below. **`D18` is retired unused** — pre-assigned to F6n,
+published, and correctly declined because there was no design fork; burned rather than
+recycled, as `F6e` was. Take `D21` only from the plan, never by reading for the highest
+number here.
 
 ---
 
@@ -420,3 +422,51 @@ reading for the highest number here.
   **Smallest viable alternative considered:** delete Patchhog from §3 and stop thinking
   about it. Rejected — the varying count says it finds something, and nobody has ever
   looked at what.
+
+### D20: the `@hono/node-server` path-traversal advisory needs no code change here
+- Status: **APPROVED 2026-08-08** — Stephen confirmed: no code change. Reopen only if the
+  reachability analysis below stops holding (i.e. something starts importing `serveStatic`,
+  or the app is ever served from Windows)
+- Type: bug-found-elsewhere
+- Date: 2026-08-08
+- Source: Patchhog security report; verified by the planner on `7b6b382`
+- Detail: Patchhog reports `@hono/node-server@1.19.14` (**GHSA-frvp-7c67-39w9**, medium):
+  path traversal in `serve-static` on **Windows** via an encoded backslash (`%5C`).
+  Suggested fix: upgrade to `2.0.5`.
+
+  **The finding is accurate about the version and wrong about the remedy.** Verified from
+  the lockfile and `node_modules` on a clean `npm ci`:
+
+  | Question | Answer |
+  |---|---|
+  | Installed version | `1.19.14` — confirmed, still present |
+  | Direct dependency? | **No.** Transitive via `@modelcontextprotocol/sdk`, which requires `^1.19.9` |
+  | Does our code use it? | **No.** `server/app.ts` is **Express**, not Hono |
+  | Is `serveStatic` used anywhere? | **No.** Zero references in `src/`, `server/`, or the SDK's shipped `dist/` |
+  | What the SDK actually imports | `getRequestListener`, in `dist/*/server/streamableHttp.js` — **not** `serveStatic` |
+  | Do we run on Windows? | No — macOS / Linux |
+
+  **The vulnerable code path is unreachable.** The package is loaded (we do use
+  `StreamableHTTPServerTransport`, `server/mcp/http.ts:12`), but only for
+  `getRequestListener`. `serveStatic` is never imported by anything in this dependency
+  tree, and the advisory is Windows-specific regardless.
+
+  **Why the suggested upgrade is worse than the finding.** `^1.19.9` excludes `2.x`, so
+  reaching `2.0.5` means forcing it through `overrides` — a **major**-version bump on a
+  transitive dependency that the MCP SDK never declared support for, on a module that sits
+  on our live MCP request path. That trades an unreachable Windows-only path traversal for
+  a real risk of breaking the MCP transport at runtime.
+
+  **Decision: no code change**, confirmed by Stephen on 2026-08-08. Revisit when
+  `@modelcontextprotocol/sdk` widens its range to accept `2.x`, at which point the bump is
+  ordinary maintenance rather than a forced override. **Do not add the `overrides` pin** —
+  it is not an improvement, and a future scanner report citing this package should be
+  checked against the table above before anyone acts on it.
+
+  **Smallest viable alternative considered:** add the `overrides` pin anyway to silence the
+  scanner. Rejected — silencing a scanner is not a security outcome, and the change is
+  riskier than the finding it closes.
+
+  See **PLAN §6 trap 12** for the separate and more serious problem: the commit that
+  claimed to fix this (`7b6b382`) changed a different package and was pushed straight to
+  `main`, skipping every scanner §3 relies on.

@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `b58b165` | after #26 and #27. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
-| Test suite | **125 total** — `125 passed / 0 skipped` on the ForteL2 host, `124 passed / 1 skipped` anywhere else | `npm test` on `b58b165` in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 34ms, Base 1224ms, Amoy 5029ms, real `eth_getCode` |
+| `main` | `7b6b382` | after #28, plus an authorised Patchhog portal push that bypassed CI (see §6 trap 12); gate re-run by hand afterwards. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **131 total** — `131 passed / 0 skipped` on the ForteL2 host, `130 passed / 1 skipped` anywhere else | `npm test` on `7b6b382` in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 39ms, Base 1362ms, Amoy 4120ms, real `eth_getCode` |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
 | F6a — ForteL2 address book | **Done** | #4 → `20f17ff`; 11 addresses, `mmf-contract` role |
@@ -35,6 +35,7 @@ method is named — "verified" without a method is how plans start lying.
 | F6l — D14 past the probe + timeout budget | **Done** | #22 → `db3bd92`; mid-run 429/-32005 skip, HTTP 500 and drift still fail; widening the catch turns 4 tests red |
 | F6i — replace dead Amoy rpcUrl | **Done** | #24 → `e5b5e13`; dRPC. Amoy block flipped skip → pass **without touching the test file**, 10 rows live. D15 |
 | F6j — user-configurable RPC | **Done** | #27 → `b58b165`; override layers **above** `NETWORKS` so the liveness suite still verifies what ships. Invalidation mutation re-run by the reviewer: dropping `invalidatePublicClient` turns the no-reload test red. D16 |
+| F6n — superseded-epoch cache guard | **Done** | #28 → `62b9548`; reviewer reverted `cache.ts` to `main` keeping the new tests and **both** epoch tests went red, incl. the `inflight.delete` case no bot reported. Purely additive test file (zero deletions) |
 | CI action pinning | **Done** | #5 → `3ff4592`; Semgrep reports `Findings: 0` |
 | `--mute` AA fix | **Done** | #7 → `ef4991b`; re-measured 4.90 canvas / 4.55 surface-soft |
 
@@ -129,16 +130,22 @@ F6j  user-configurable RPC on failure     ✅ merged #27 (D16) — closed issue 
 F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
 F6m  Patchhog reports nothing readable    📋 open — D17, waiting on the dashboard
-F6n  cache write from a superseded epoch  📤 dispatched 2026-08-08
-                                             D18 (optional) · strongest · after #27
-F6o  (next free identifier)
+F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
+F6o  Overview RPC dead-end                📤 dispatched 2026-08-08
+                                             D19 (optional) · strong · after #28
+F6p  (next free identifier)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6o`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6p`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
+
+**`D18` is retired, not free.** It was pre-assigned to F6n and published in that
+dispatch and in this plan. F6n correctly declined it — a global epoch counter was the
+mechanism the dispatch specified, so there was no design fork worth an entry. Because the
+identifier was already published, it is burned rather than recycled, exactly as `F6e` was.
 
 **`F6e` is retired, not free.** It was briefly assigned to the chain-852 test
 before that work was renumbered `F6c-test` to sit under the issue it closes
@@ -174,7 +181,8 @@ Ownership is what keeps parallel agents from colliding. State it per task.
 | `server/mcp/server.ts` `ROLES` | whoever adds a role | append-only enum |
 | `.github/workflows/**` | CI tasks | actions pinned to SHAs — keep them pinned |
 | `src/lib/rpc-overrides.ts`, `src/lib/clients.ts` | RPC-resolution tasks | override precedence + client cache; **must stay above `NETWORKS`** (D16) |
-| `src/lib/cache.ts` | F6n | epoch guard in flight; do not take it in parallel |
+| `src/lib/cache.ts` | F6n (landed) | epoch guard — **do not modify**; correct and freshly reviewed |
+| `src/pages/OverviewPage.tsx` | F6o | override control + reload token in flight |
 
 **Append-only shared files that will conflict anyway:** `DECISIONS.md` (every
 worker appends at the end), and the `ROLES` array in `server/mcp/server.ts`.
@@ -233,14 +241,13 @@ RISKS AND FOLLOW-UPS: <the most useful field — write it honestly>
 
 ```
 F6g ──✅ #15   F6h ──✅ #18   F6k ──✅ #20   F6l ──✅ #22
-F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n  📤 in flight  (src/lib/cache.ts)
+F6i ──✅ #24 ──▶ F6j ──✅ #27 ──▶ F6n ──✅ #28 ──▶ F6o  📤 in flight  (OverviewPage)
 F6m  📋 blocked on the Patchhog dashboard, not on any task
 ```
 
-**Nothing is parallel right now.** F6n is the only task in flight and it owns
-`src/lib/cache.ts` alone. The next task after it can run beside it only if it avoids
-`cache.ts` and the RPC-resolution files — `clients.ts` and `rpc-overrides.ts` are
-adjacent enough to F6n's blast radius that a change there wants to be serialized.
+**Nothing is parallel right now.** F6o is the only task in flight and it owns
+`src/pages/OverviewPage.tsx`. A task can run beside it only if it avoids that page,
+`src/lib/cache.ts`, and the RPC-resolution files (`clients.ts`, `rpc-overrides.ts`).
 
 **F6i and F6h interact usefully:** once F6i replaces the dead Amoy endpoint, the
 F6h suite's Amoy block flips from skip to pass on its own. That is a free
@@ -273,12 +280,22 @@ D16. The question reopens if anything ever needs to health-check an endpoint bef
   without a decision entry; it would defeat the case it exists for.
 - **The Overview directory rows have no override control** — only the address-detail,
   entity and graph panels do. A user whose first stop is Overview sees `unavailable`
-  with no affordance. Minor; folded into F6n's notes rather than given its own task.
+  with no affordance. **Now dispatched as F6o.**
 - **F6j made a latent `cache.ts` flaw reachable** — a fetch already in flight when
   `cacheClear()` runs still writes its result, and can overwrite a newer good one
-  (last-writer-wins). Verified with a red probe during review; **F6n** fixes it in
-  `cache.ts`. The `invalidatePublicClient` path in `clients.ts` is correct and is *not*
-  the defect site, despite being where the bot reported it.
+  (last-writer-wins). **Closed by F6n (#28)** — an epoch counter discards writes and
+  inflight-deletes from a superseded generation. The `invalidatePublicClient` path in
+  `clients.ts` was correct all along and was *not* the defect site, despite being where
+  the bot reported it.
+
+**And the risk F6n itself flagged is closed, not merely accepted.** Its handoff warned
+that callers awaiting a superseded promise still receive stale data in their own return
+value. True at the promise level, unreachable in practice: `src/hooks/useAsync.ts` puts
+its retry token in the effect dependency array, so React runs the cleanup
+(`cancelled = true`) before the next effect and the stale `.then` never reaches
+`setState`; and `server/` never calls `cacheClear` or `invalidatePublicClient` at all, so
+the Node/MCP path cannot reach the race. Recorded because "accepted residual risk" and
+"unreachable" get different treatment from the next reader.
 
 #7 (`ef4991b`) and F6d (`c112874`) have both landed, so the `--mute`
 serialization constraint is fully discharged and **no task currently owns
@@ -371,3 +388,25 @@ Each of these has already cost time.
    ran) and trap 8 (a command that never ran reads as a clean result). **Semgrep, Trivy
    and Cursor Bugbot are real** — all three verified as genuine check runs on #24's head.
    See **D17** and **F6m**.
+
+12. **Patchhog applies fixes as a direct push to `main`, which skips every scanner.**
+   On 2026-08-08, commit `7b6b382` — *"Security: bump 1 vulnerable dependency (Patchhog
+   security fix)"* — landed **directly on `main` with no PR**. Stephen authorised it in the
+   Patchhog portal, so it is **not** an autonomous bot write, and it runs under his account
+   because that is the credential the portal holds. The gap is the delivery channel, not
+   the authorisation: §3 routes fixes through a PR precisely so CI, Semgrep, Trivy and
+   Bugbot run, and a portal-applied push gets none of them. This one changed
+   `package.json` + `package-lock.json` — the highest-blast-radius pair in the repo — and
+   `main` was only confirmed green afterwards by a hand-run gate (`npm ci` coherent,
+   131 passed / 0 skipped). That was verification after the fact, not before.
+   **If you authorise a portal fix, re-run the gate on `main` yourself**, because nothing
+   else will.
+
+   *Planner error worth recording (2026-08-08).* I first read this commit as claiming to fix
+   the `@hono/node-server` advisory and failing to — it bumped `nanoid` and left
+   `@hono/node-server` at `1.19.14`. **That was wrong.** The message says "1 vulnerable
+   dependency" and names no package; Patchhog had several findings, this one applied the
+   `nanoid` fix, and the hono advisory was simply still outstanding (see **D20**). I
+   inferred a connection from timing and stated it as fact. **Do not infer which advisory
+   an automated security commit addresses from what was reported near it — read the diff
+   and match the package.**
