@@ -1,5 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  Route,
+  RouterProvider,
+  Routes,
+} from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AddressBalances } from '../chain/balances'
 import { getBalances } from '../chain/balances'
@@ -48,6 +54,20 @@ function unavailableBalances(
   }
 }
 
+function okBalances(networkId: string, address: string): AddressBalances {
+  return {
+    networkId: networkId as AddressBalances['networkId'],
+    address,
+    native: {
+      symbol: 'ETH',
+      raw: 1n,
+      formatted: '0.001',
+      status: 'ok',
+    },
+    tokens: [],
+  }
+}
+
 function renderOverview(path = '/base-sepolia') {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -56,6 +76,15 @@ function renderOverview(path = '/base-sepolia') {
       </Routes>
     </MemoryRouter>,
   )
+}
+
+function renderOverviewNavigable(path = '/base-sepolia') {
+  const router = createMemoryRouter(
+    [{ path: '/:networkId', element: <OverviewPage /> }],
+    { initialEntries: [path] },
+  )
+  const view = render(<RouterProvider router={router} />)
+  return { ...view, router }
 }
 
 async function waitForInitialFetch(entryCount: number) {
@@ -69,11 +98,13 @@ describe('OverviewPage', () => {
     vi.clearAllMocks()
     localStorage.removeItem(RPC_OVERRIDE_STORAGE_KEY)
     clearNetworkRpcOverride('base-sepolia')
+    clearNetworkRpcOverride('fortel2-sepolia')
   })
 
   afterEach(() => {
     localStorage.removeItem(RPC_OVERRIDE_STORAGE_KEY)
     clearNetworkRpcOverride('base-sepolia')
+    clearNetworkRpcOverride('fortel2-sepolia')
   })
 
   it('renders the directory and filters by query', async () => {
@@ -256,5 +287,95 @@ describe('OverviewPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Balances as of/i)).toBeInTheDocument()
     })
+  })
+
+  it('keeps the RPC control mounted while a clear-triggered reload is in flight', async () => {
+    const entryCount = getAddressesForNetwork('base-sepolia').length
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let call = 0
+
+    // Initial load + save-triggered reload resolve immediately; the post-clear
+    // round hangs so we can assert during the blackout window.
+    mockedGetBalances.mockImplementation(async (networkId, address) => {
+      call += 1
+      if (call > entryCount * 2) {
+        await gate
+      }
+      return unavailableBalances(networkId, address)
+    })
+
+    renderOverview()
+    await waitForInitialFetch(entryCount)
+    await waitFor(() => {
+      expect(screen.getByLabelText(/RPC URL/i)).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/RPC URL/i), {
+        target: { value: 'https://temp-base.example/rpc' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Save RPC/i }))
+    })
+    await waitFor(() => {
+      expect(mockedGetBalances).toHaveBeenCalledTimes(entryCount * 2)
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Use default/i }))
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(new RegExp(`Loading balances 0/${entryCount}`)),
+      ).toBeInTheDocument()
+    })
+    // Assert the toggle — the input is hidden when the form is collapsed.
+    expect(
+      screen.getByRole('button', { name: /Set RPC for Base Sepolia/i }),
+    ).toBeInTheDocument()
+
+    release()
+    await waitFor(() => {
+      expect(mockedGetBalances).toHaveBeenCalledTimes(entryCount * 3)
+    })
+  })
+
+  it('does not keep the RPC control sticky across network changes', async () => {
+    const baseCount = getAddressesForNetwork('base-sepolia').length
+    mockedGetBalances.mockImplementation(async (networkId, address) => {
+      if (networkId === 'base-sepolia') {
+        return unavailableBalances(networkId, address)
+      }
+      return okBalances(networkId, address)
+    })
+
+    const { router } = renderOverviewNavigable('/base-sepolia')
+    await waitForInitialFetch(baseCount)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Set RPC for Base Sepolia/i }),
+      ).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      await router.navigate('/fortel2-sepolia')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('ForteL2 Sepolia')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/Balances as of/i)).toBeInTheDocument()
+    })
+
+    expect(
+      screen.queryByRole('button', { name: /Set RPC for/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: /RPC endpoint override/i }),
+    ).not.toBeInTheDocument()
   })
 })

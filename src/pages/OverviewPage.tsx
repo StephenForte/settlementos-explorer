@@ -39,6 +39,10 @@ export function OverviewPage() {
   // Do not derive this from render-time identity (objects, Date.now(), etc.)
   // or the effect will fan out getBalances in a loop (PLAN §6 trap 9 / D14).
   const [balanceReloadToken, setBalanceReloadToken] = useState(0)
+  // Once the page-level RPC control has been shown for this network, keep it
+  // mounted through reloads where balances is briefly {}. Reset on network
+  // change — OverviewPage is reused across /:networkId without remounting.
+  const [rpcOverrideSticky, setRpcOverrideSticky] = useState(false)
 
   const filtered = useMemo(
     () => filterAddressEntries(entries, query),
@@ -47,6 +51,7 @@ export function OverviewPage() {
 
   useEffect(() => {
     setQuery('')
+    setRpcOverrideSticky(false)
   }, [networkId])
 
   useEffect(() => {
@@ -88,11 +93,18 @@ export function OverviewPage() {
         ? `Loading balances ${balancesLoaded}/${entries.length}…`
         : null
 
-  // Page-level control (one override per network). Mount only when useful so
+  // Page-level control (one override per network). Mount when useful so
   // defaultOpen applies on first paint of the failure — BalanceChips-style.
-  const showRpcOverride =
+  // Latch during render (boolean primitive) rather than in an effect: an
+  // effect on needsRpcOverride would re-latch from the previous network's
+  // balances before the fetch effect clears them.
+  const needsRpcOverride =
     Boolean(getRpcOverride(networkId)) ||
     Object.values(balances).some(hasUnavailable)
+  if (needsRpcOverride && !rpcOverrideSticky) {
+    setRpcOverrideSticky(true)
+  }
+  const showRpcOverride = rpcOverrideSticky || needsRpcOverride
 
   return (
     <div className="page">
