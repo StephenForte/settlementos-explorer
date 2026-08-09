@@ -26,13 +26,13 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D26`.** `D20`, `D21`, `D23`, `D24` and `D25` are below. **`D18`, `D19` and `D22` are
+**Next free identifier: `D27`.** `D20`, `D21`, `D23`, `D24`, `D25` and `D26` are below. **`D18`, `D19` and `D22` are
 all retired unused** — pre-assigned to F6n, F6o and F6p respectively, published in those
 dispatches, and correctly declined because none of the three hit a design fork: each used
 the mechanism its dispatch specified. Burned rather than recycled, as `F6e` was. Three
 retirements in a row is the pre-assignment rule working, not waste — an optional
 identifier costs one line in a dispatch and removes the chance of two parallel workers
-claiming the same number. Take `D26` only from the plan, never by reading for the highest
+claiming the same number. Take `D27` only from the plan, never by reading for the highest
 number here.
 
 ---
@@ -582,8 +582,10 @@ number here.
   x-vercel-error: DEPLOYMENT_NOT_FOUND
   ```
 
-  So roughly twenty scans' worth of detail is still lost, **F6m remains blocked on the
-  dashboard**, and nobody has yet seen what any of it found — including what the four
+  So roughly twenty scans' worth of detail is still lost. *(Superseded 2026-08-09 by
+  **D26**: Patchhog reached 0 findings, so there is nothing left to read and **F6m is
+  closed**. The lost detail is accepted permanently.)* At the time of writing, F6m was
+  treated as blocked on the dashboard — and nobody has yet seen what any of it found — including what the four
   high/critical failures were about. That half of D17 is carried forward unchanged.
 
   **Two smaller facts this surfaced.** The failures sit on commits **Patchhog itself
@@ -605,6 +607,8 @@ number here.
   it. **This is a decision about the dashboard, not about Patchhog's value.** If the
   dashboard returns, the objection disappears and requiring the check becomes the obvious
   move — that is the trigger to reopen this, and it is what **F6m** is waiting on.
+  *(Overtaken 2026-08-09 by **D24**, which made it required regardless, and by **D26**,
+  which closed F6m at 0 findings.)*
 
   **Smallest viable alternative considered:** quietly fix the sentence in D17 and move on.
   Rejected — the log is append-only, and a superseding entry that shows *how* a bounded
@@ -646,6 +650,8 @@ number here.
   around the gate that Patchhog now enforces. That is coherent — the bypass exists for
   exactly this — but it means **this gate is only as good as the dashboard**, and the value
   of fixing the dashboard (**F6m**) went up the moment the check became required.
+  *(Superseded 2026-08-09 by **D26**: Patchhog reached 0 findings, so the dashboard's value
+  went back to ~zero and F6m is closed. `npm audit` covers the detail a red would need.)*
 
   **The failure mode to watch:** if Patchhog ever stops posting the status at all, the
   required context stays `pending` indefinitely and blocks every merge, with no red to
@@ -712,3 +718,58 @@ number here.
 
   **Smallest viable alternative considered:** bump the SDK and stop. Rejected — proved above
   to leave the advisory in place.
+
+### D26: Patchhog is at 0 findings — F6m closed; `npm audit` is the system of record
+- Status: **APPROVED 2026-08-09** — Stephen confirmed Patchhog is zeroed and the scans
+  verified. Closes **F6m**; supersedes the "findings are unreadable" residue carried in
+  **D17** and **D23**
+- Type: scope-question
+- Date: 2026-08-09
+- Source: Stephen, after F6q (#38) and the docs close-out (#39)
+- Detail: `patchhog/security` on `main` (`e2af36b`) reports **`success — Clean scan: 0
+  findings`** — the first zero in this repo's history. Read against the API, not the UI.
+
+  **F6m is closed because its subject no longer exists.** The task was "Patchhog reports
+  nothing readable". With **0 findings**, there is nothing to read. It is resolved at
+  source rather than deferred, and it was resolved without the dashboard ever answering.
+
+  **All four scanners on `main`, read rather than assumed** (trap 4 — a green job is not
+  proof it ran):
+
+  | Signal | State |
+  |---|---|
+  | `patchhog/security` | `success — Clean scan: 0 findings` |
+  | Semgrep SAST | `Findings: 0 (0 blocking)` — from the run log |
+  | Trivy Dependency & Misconfig | `success` |
+  | `check` (CI) | `success` |
+  | `npm audit` | `found 0 vulnerabilities` |
+
+  Semgrep and Trivy ran on `9c66892`, the head of #39 — the commit that merged to
+  `e2af36b`.
+
+  **The dashboard is now accepted as permanently unavailable, and that costs nothing.**
+  `patchr-eight.vercel.app` still returns `DEPLOYMENT_NOT_FOUND`. The division of labour
+  that F6q proved out is the standing arrangement:
+
+  - **`patchhog/security` is the gate** — a required check (**D24**) whose red state is a
+    real signal, since it fires on auto-fixable high/critical (**D23**).
+  - **`npm audit` is the system of record for the detail** — package, GHSA, severity and
+    fix version, straight from the committed lockfile, no UI involved.
+
+  A future red therefore means: run `npm audit`, identify the advisory, decide reachability
+  as **D20** did, and fix or record it. **That path is proven, not theoretical** — it is
+  exactly how F6q (#38) ran end to end.
+
+  **Two residues, both closed rather than parked.** The four historical `failure` statuses
+  (`a436ecf`, `e77fb13`, `1d7b24d`, `f76ebaa`, all pre-#5, all on commits Patchhog itself
+  authored) are reflected in a count that is now zero — whatever they flagged is fixed, and
+  recovering the detail is archaeology with no action attached. Whether Patchhog earns its
+  place in PLAN §3 was answered by **D24**: it is a required check.
+
+  **What would reopen this:** a red `patchhog/security` whose advisory `npm audit` cannot
+  identify. That would mean Patchhog scans something npm does not — plausible, never
+  observed — and only then does the dashboard become worth chasing again.
+
+  **Smallest viable alternative considered:** keep F6m open pending the dashboard.
+  Rejected — that is the exact error corrected earlier the same day, and holding a task
+  open against a resolved condition is how a plan starts lying about its own state.
