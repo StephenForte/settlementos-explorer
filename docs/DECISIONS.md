@@ -26,11 +26,11 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D21`.** `D19` is assigned to **F6o** (dispatched 2026-08-08,
-optional for that task); `D20` is below. **`D18` is retired unused** — pre-assigned to F6n,
-published, and correctly declined because there was no design fork; burned rather than
-recycled, as `F6e` was. Take `D21` only from the plan, never by reading for the highest
-number here.
+**Next free identifier: `D22`.** `D19` is assigned to **F6o** (dispatched 2026-08-08,
+optional for that task); `D20` and `D21` are below. **`D18` is retired unused** —
+pre-assigned to F6n, published, and correctly declined because there was no design fork;
+burned rather than recycled, as `F6e` was. Take `D22` only from the plan, never by reading
+for the highest number here.
 
 ---
 
@@ -470,3 +470,49 @@ number here.
   See **PLAN §6 trap 12** for the separate and more serious problem: the commit that
   claimed to fix this (`7b6b382`) changed a different package and was pushed straight to
   `main`, skipping every scanner §3 relies on.
+
+### D21: branch ruleset on `main` — block force pushes, require a PR, 0 approvals
+- Status: **APPROVED 2026-08-08** — Stephen is rolling this shape out across his GitHub
+  repos, so treat the *generic* half as a house standard and the *repo-specific* half as
+  needing per-repo values
+- Type: design-choice
+- Date: 2026-08-08
+- Source: planner recommendation, prompted by the portal push in PLAN §6 trap 12
+- Detail: A GitHub **branch ruleset** targeting `~DEFAULT_BRANCH`, enforcement **Active**.
+
+  **The rules, and why each is set the way it is:**
+
+  | Rule | Value | Reason |
+  |---|---|---|
+  | Restrict deletions | **on** | |
+  | Block force pushes | **on** | **The highest-value rule here.** Closes the accident class that has actually cost this project time — trap 10's `reset --hard` orphaned a worker's commit, and trap 7's stranded commit came from the same family. Costs nothing. |
+  | Require a pull request | **on** | Makes the §3 contract mechanical instead of advisory. |
+  | ↳ Required approvals | **0** | **Load-bearing.** GitHub will not let an author approve their own PR, so `1` hard-blocks a solo operator entirely. `0` still forces the PR — which is what triggers CI, Semgrep, Trivy and Bugbot. |
+  | ↳ Dismiss stale approvals | off | Nothing to dismiss at 0 approvals. |
+  | ↳ Require conversation resolution | off | Bugbot opens review threads; this would mean closing them by hand every time. |
+  | Require status checks | **on** | |
+  | ↳ Contexts | `check`, `Semgrep SAST`, `Trivy Dependency & Misconfig Scan` | **Repo-specific** — these are this repo's exact check-run names, verified against #24's head. Other repos need their own. |
+  | ↳ Require up to date before merging | **off** | Deliberate. Planner docs PRs move `main` constantly; requiring this would put every worker on a rebase treadmill. #28 merged one commit behind `main` with zero risk because the intervening commit was docs-only. |
+  | Require linear history | off | Squash merges already produce it; adds friction, solves nothing here. |
+  | **Bypass list** | **Repository admin** | Stephen's deliberate escape hatch — keeps the Patchhog portal path and genuine emergencies working. |
+
+  **Two deliberate omissions, both about not gating on a weak signal:**
+
+  - **`Cursor Bugbot` is not required.** It is an advisory reviewer that posts a review
+    body. Gating merges on a third-party AI reviewer's availability buys latency, not
+    safety.
+  - **`patchhog/security` is not required.** Per **D17** it reports `success` at 2 findings
+    and `success` at 4 — no threshold, so requiring it gates on a value that is always
+    green. Making a tool nobody can read into a merge gate is worse than not having it.
+
+  **Known and accepted limitation.** Patchhog holds Stephen's own credential (the `7b6b382`
+  push was authored *and* committed as `StephenForte`), so GitHub cannot distinguish it from
+  him. A `Repository admin` bypass is therefore also a bypass for Patchhog: portal-applied
+  fixes will still land directly on `main` and still skip every scanner. That is the
+  accepted tradeoff, not an oversight — the mitigation is trap 12's rule to **re-run the
+  gate on `main` by hand after authorising a portal fix.** The only real fix is for Patchhog
+  to act as its own GitHub App rather than as Stephen; out of scope here.
+
+  **Smallest viable alternative considered:** block force pushes and deletions only, and
+  skip the PR requirement. Rejected — the PR is what triggers the entire scanning
+  apparatus, so without it §3's guarantees stay advisory.

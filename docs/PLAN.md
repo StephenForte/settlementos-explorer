@@ -131,7 +131,7 @@ F6k  make the D13 guard test real         ✅ merged #20
 F6l  D14 availability past the probe       ✅ merged #22
 F6m  Patchhog reports nothing readable    📋 open — D17, waiting on the dashboard
 F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
-F6o  Overview RPC dead-end                📤 dispatched 2026-08-08
+F6o  Overview RPC dead-end                🔍 returned as #31 — UNREVIEWED
                                              D19 (optional) · strong · after #28
 F6p  (next free identifier)
 
@@ -400,7 +400,9 @@ Each of these has already cost time.
    `main` was only confirmed green afterwards by a hand-run gate (`npm ci` coherent,
    131 passed / 0 skipped). That was verification after the fact, not before.
    **If you authorise a portal fix, re-run the gate on `main` yourself**, because nothing
-   else will.
+   else will. **D21** adds a ruleset on `main` but deliberately keeps a `Repository admin`
+   bypass — and since Patchhog holds Stephen's credential, that bypass covers it too, so
+   this trap is not closed by the ruleset. It is mitigated only by the hand-run gate.
 
    *Planner error worth recording (2026-08-08).* I first read this commit as claiming to fix
    the `@hono/node-server` advisory and failing to — it bumped `nanoid` and left
