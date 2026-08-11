@@ -832,3 +832,22 @@ highest number here.
   direction survival still soft-errors (F6s). Soft error text also carries
   `N of M token-directions failed` and dedupes identical messages rather than
   joining repeats. `truncated` remains explorer-outage-only.
+
+  **The threshold is per-direction, with no aggregate backstop — know this before
+  trusting a clean result.** A fetch in which *every* direction loses at or below half
+  its chunks stays silent no matter how much history that adds up to. Measured during
+  review of #43: **12 of 24 chunks failed — half of all history — with `error`
+  undefined** and only the surviving half rendered as if complete.
+
+  That is a deliberate consequence of picking a per-window ratio, not an oversight. An
+  aggregate check would fire on exactly the endpoints this decision exists to tolerate —
+  the ones that reject a steady minority of windows — and would restore the permanent
+  banner the threshold was chosen to avoid. The trade is: **a bounded, silent
+  under-report in exchange for a signal that still means something when it appears.**
+
+  **If that trade proves wrong in practice, the fix is a second aggregate threshold set
+  well above this one — not a lower per-direction ratio.** Lowering the per-direction
+  number re-creates the always-on banner; adding an aggregate ceiling catches the
+  distributed case while leaving the tolerated minority silent. Retry/backoff on failed
+  chunks would reduce the underlying loss and was deliberately left out of F6t (request
+  profile against rate-limited public RPCs); it remains the other open lever.
