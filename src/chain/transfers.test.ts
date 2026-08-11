@@ -558,6 +558,51 @@ describe('getTransfers', () => {
     }
   })
 
+  it('stays silent when within-window loss equals the signal ratio exactly', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    // Four chunks in [0, 7999]: 0, 2000, 4000, 6000. Fail exactly two → 0.50.
+    expect(2 / 4).toBe(CHUNK_LOSS_SIGNAL_RATIO)
+    mockPublicClient.getBlockNumber.mockResolvedValue(7999n)
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { fromBlock, args } = (params ?? {}) as {
+        fromBlock?: bigint
+        args?: { from?: string; to?: string }
+      }
+      if (fromBlock === 2000n || fromBlock === 4000n) {
+        throw new Error('chunk rejected')
+      }
+      if (fromBlock === 0n && args?.from) {
+        return [
+          {
+            address: token,
+            blockNumber: 100n,
+            transactionHash: '0xexact-ratio',
+            logIndex: 0,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              `0x${self.slice(2).toLowerCase().padStart(64, '0')}`,
+              `0x${'9d8b8b7c476ab02306046f3da719d380fa0456aa'.padStart(64, '0')}`,
+            ],
+            data: `0x${(1_000_000n).toString(16).padStart(64, '0')}`,
+          },
+        ]
+      }
+      return []
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    // Pins strict `>`: equality must not signal (D30).
+    expect(result.error).toBeUndefined()
+    const transfer = result.items.find((i) => i.kind === 'transfer')
+    expect(transfer?.kind).toBe('transfer')
+    if (transfer?.kind === 'transfer') {
+      expect(transfer.txHash).toBe('0xexact-ratio')
+    }
+  })
+
   it('signals when within-window getLogs loss exceeds the signal ratio', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
     const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
