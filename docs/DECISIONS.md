@@ -26,14 +26,18 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D27`.** `D20`, `D21`, `D23`, `D24`, `D25` and `D26` are below. **`D18`, `D19` and `D22` are
-all retired unused** — pre-assigned to F6n, F6o and F6p respectively, published in those
-dispatches, and correctly declined because none of the three hit a design fork: each used
-the mechanism its dispatch specified. Burned rather than recycled, as `F6e` was. Three
-retirements in a row is the pre-assignment rule working, not waste — an optional
-identifier costs one line in a dispatch and removes the chance of two parallel workers
-claiming the same number. Take `D27` only from the plan, never by reading for the highest
-number here.
+**Next free identifier: `D30`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26` and `D27` are below.
+**`D18`, `D19`, `D22`, `D28` and `D29` are all retired unused.** `D18`, `D19` and `D22` were pre-assigned
+to F6n, F6o and F6p respectively, published in those dispatches, and correctly declined because
+none hit a design fork: each used the mechanism its dispatch specified. `D28` was pre-assigned to
+F6r for the `TransfersResult` fork and correctly declined — the floor needed no exported-shape
+change — and it was **also an off-by-one**: `D27` was the true next-free when that dispatch was
+written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what counts as total
+failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
+than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
+an optional identifier costs one line in a dispatch and removes the chance of two parallel
+workers claiming the same number. Take `D30` only from the plan, never by reading for the
+highest number here.
 
 ---
 
@@ -773,3 +777,42 @@ number here.
   **Smallest viable alternative considered:** keep F6m open pending the dashboard.
   Rejected — that is the exact error corrected earlier the same day, and holding a task
   open against a resolved condition is how a plan starts lying about its own state.
+
+---
+
+### D27: `eth_getLogs` capability errors always fail the liveness suite — narrows D14
+- Status: **APPROVED 2026-08-11** — the F6r worker made this call and disclosed it in their
+  handoff; the planner is recording it during review of #41. No code change accompanies this
+  entry
+- Type: design-choice
+- Date: 2026-08-11
+- Source: F6r (#41), reviewer pass
+- Detail: In the F6r `eth_getLogs` capability check, **JSON-RPC errors always fail** — including
+  `-32005` / "limit exceeded". Only **HTTP** availability statuses (429 and friends) still skip.
+  Everywhere else, D14's posture is untouched.
+
+  **Why the split.** `-32005` is overloaded. **D14** reads it as a rate-limit and skips, so
+  throttling degrades the suite instead of reddening CI. But providers also return it for
+  **block-range rejection** — the shape thirdweb used in **D15**. Routing that to skip would make
+  the capability check skip on precisely the endpoints it exists to catch, which is the
+  **F6g / D13** failure class ("a broken RPC must fail, not skip") reappearing one layer up. A
+  check that cannot go red on the condition it tests is not a check.
+
+  **What this costs, stated plainly.** A provider that signals throttling via JSON-RPC `-32005`
+  rather than HTTP 429 will now **redden CI on the getLogs call**, where D14 deliberately chose
+  skip. Accepted because the exposure is much smaller than it looks: the liveness suite makes
+  ~13 calls per network (`chainId` + `getCode`×10 + `blockNumber` + `getLogs`), against the app's
+  150–200 per address fetch. Throttling mid-suite is far less likely than throttling mid-app.
+
+  **Smallest viable alternative, and why not.** Distinguish the two meanings by message text
+  (`/range|block range|limit exceeded/` vs rate wording). Rejected: provider message strings are
+  unstable, unversioned and untested here, and a regex that drifts silently restores the skip —
+  reintroducing the bug with no signal. Failing loudly on an ambiguous code is the safer default,
+  because the false-positive is a red run someone reads, and the false-negative is a silent hole.
+
+  **On a red.** If Base or Amoy reddens on the getLogs call, read the error message before
+  touching config. **Range rejection** = real capability loss; replace the endpoint, as F6i did
+  for Amoy. **Sustained rate-limiting** = this decision was wrong for that provider, and it should
+  be revisited rather than worked around.
+
+  **`D28` is retired, not free** — see the identifier note at the top of this file.
