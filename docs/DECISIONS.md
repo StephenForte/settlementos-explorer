@@ -26,15 +26,16 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D29`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26` and `D27` are below.
-**`D18`, `D19`, `D22` and `D28` are all retired unused.** `D18`, `D19` and `D22` were pre-assigned
+**Next free identifier: `D30`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26` and `D27` are below.
+**`D18`, `D19`, `D22`, `D28` and `D29` are all retired unused.** `D18`, `D19` and `D22` were pre-assigned
 to F6n, F6o and F6p respectively, published in those dispatches, and correctly declined because
 none hit a design fork: each used the mechanism its dispatch specified. `D28` was pre-assigned to
 F6r for the `TransfersResult` fork and correctly declined — the floor needed no exported-shape
 change — and it was **also an off-by-one**: `D27` was the true next-free when that dispatch was
-written, and the planner skipped it. Burned rather than recycled, as `F6e` was. Four retirements
-is the pre-assignment rule working, not waste — an optional identifier costs one line in a
-dispatch and removes the chance of two parallel workers claiming the same number. Take `D29` only
+written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what counts as total
+failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
+than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste — an optional identifier costs one line in a
+dispatch and removes the chance of two parallel workers claiming the same number. Take `D30` only
 from the plan, never by reading for the highest number here.
 
 ---
