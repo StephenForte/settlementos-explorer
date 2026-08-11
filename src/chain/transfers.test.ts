@@ -3,6 +3,7 @@ import { cacheClear } from '../lib/cache'
 import {
   aggregateFlows,
   annotateTransfer,
+  CHUNK_LOSS_SIGNAL_RATIO,
   counterpartySummary,
   getTransfers,
   onlyTransfers,
@@ -350,7 +351,14 @@ describe('getTransfers', () => {
     const result = await getTransfers('fortel2-sepolia', self)
     expect(result.source).toBe('rpc-logs')
     expect(result.truncated).toBe(false)
-    expect(result.error).toMatch(/token history partial/)
+    // mockJPY out+in fail; mockUSDC + mockSGD succeed → 2 of 6.
+    expect(result.error).toMatch(
+      /token history partial: 2 of 6 token-directions failed — eth_getLogs failed for every chunk in the 1-chunk window$/,
+    )
+    // Identical underlying failures must not be concatenated repeatedly.
+    expect(
+      (result.error!.match(/eth_getLogs failed for every chunk/g) ?? []).length,
+    ).toBe(1)
     const transfer = result.items.find((i) => i.kind === 'transfer')
     expect(transfer?.kind).toBe('transfer')
     if (transfer?.kind === 'transfer') {
@@ -397,12 +405,55 @@ describe('getTransfers', () => {
     const result = await getTransfers('fortel2-sepolia', self)
     expect(result.source).toBe('rpc-logs')
     expect(result.truncated).toBe(false)
-    expect(result.error).toMatch(/token history partial/)
+    // All three tokens' outgoing directions fail → 3 of 6.
+    expect(result.error).toMatch(
+      /token history partial: 3 of 6 token-directions failed — eth_getLogs failed for every chunk in the 1-chunk window$/,
+    )
+    expect(
+      (result.error!.match(/eth_getLogs failed for every chunk/g) ?? []).length,
+    ).toBe(1)
     const transfer = result.items.find((i) => i.kind === 'transfer')
     expect(transfer?.kind).toBe('transfer')
     if (transfer?.kind === 'transfer') {
       expect(transfer.txHash).toBe('0xincoming-only')
     }
+  })
+
+  it('dedupes identical direction-failure messages instead of repeating them', async () => {
+    mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+    mockPublicClient.getLogs.mockRejectedValue(
+      new Error('eth_getLogs failed for every chunk in the 1-chunk window'),
+    )
+    // Force one direction to succeed so we take the soft-partial path, not throw.
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { address, args } = (params ?? {}) as {
+        address?: string
+        args?: { from?: string; to?: string }
+      }
+      if (
+        address?.toLowerCase() === mockUsdc.toLowerCase() &&
+        args?.to?.toLowerCase() === self.toLowerCase()
+      ) {
+        return []
+      }
+      throw new Error('eth_getLogs failed for every chunk in the 1-chunk window')
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.error).toMatch(
+      /token history partial: 5 of 6 token-directions failed/,
+    )
+    expect(result.error).toMatch(
+      /eth_getLogs failed for every chunk in the 1-chunk window/,
+    )
+    // Anti-goal: the same sentence repeated with "; " joins (reviewer 311-char case).
+    const sentence =
+      'eth_getLogs failed for every chunk in the 1-chunk window'
+    const occurrences = result.error!.split(sentence).length - 1
+    expect(occurrences).toBe(1)
+    expect(result.error!.length).toBeLessThan(200)
   })
 
   it('returns a clean empty result when every getLogs call succeeds with no transfers', async () => {
@@ -419,10 +470,54 @@ describe('getTransfers', () => {
     expect(result.items.filter((i) => i.kind === 'transfer')).toHaveLength(0)
   })
 
-  it('returns logs from successful chunks when some getLogs chunks fail', async () => {
+  it('returns a clean non-empty result when every getLogs call succeeds with transfers', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { address, args } = (params ?? {}) as {
+        address?: string
+        args?: { from?: string; to?: string }
+      }
+      if (
+        address?.toLowerCase() === mockUsdc.toLowerCase() &&
+        args?.from?.toLowerCase() === self.toLowerCase()
+      ) {
+        return [
+          {
+            address: mockUsdc,
+            blockNumber: 100n,
+            transactionHash: '0xclean-usdc',
+            logIndex: 0,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              `0x${self.slice(2).toLowerCase().padStart(64, '0')}`,
+              `0x${'9d8b8b7c476ab02306046f3da719d380fa0456aa'.padStart(64, '0')}`,
+            ],
+            data: `0x${(1_000_000n).toString(16).padStart(64, '0')}`,
+          },
+        ]
+      }
+      return []
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toBeUndefined()
+    const transfer = result.items.find((i) => i.kind === 'transfer')
+    expect(transfer?.kind).toBe('transfer')
+    if (transfer?.kind === 'transfer') {
+      expect(transfer.txHash).toBe('0xclean-usdc')
+    }
+  })
+
+  it('keeps survivors and stays silent when within-window loss is at or below the signal ratio', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
     const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
     // Three chunks in [0, 5000]: 0–1999, 2000–3999, 4000–5000.
+    // 1/3 failed = below CHUNK_LOSS_SIGNAL_RATIO (0.5).
+    expect(1 / 3).toBeLessThanOrEqual(CHUNK_LOSS_SIGNAL_RATIO)
     mockPublicClient.getBlockNumber.mockResolvedValue(5000n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { fromBlock, args } = (params ?? {}) as {
@@ -461,6 +556,115 @@ describe('getTransfers', () => {
     if (transfer?.kind === 'transfer') {
       expect(transfer.txHash).toBe('0xpartial-chunk')
     }
+  })
+
+  it('stays silent when within-window loss equals the signal ratio exactly', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    // Four chunks in [0, 7999]: 0, 2000, 4000, 6000. Fail exactly two → 0.50.
+    expect(2 / 4).toBe(CHUNK_LOSS_SIGNAL_RATIO)
+    mockPublicClient.getBlockNumber.mockResolvedValue(7999n)
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { fromBlock, args } = (params ?? {}) as {
+        fromBlock?: bigint
+        args?: { from?: string; to?: string }
+      }
+      if (fromBlock === 2000n || fromBlock === 4000n) {
+        throw new Error('chunk rejected')
+      }
+      if (fromBlock === 0n && args?.from) {
+        return [
+          {
+            address: token,
+            blockNumber: 100n,
+            transactionHash: '0xexact-ratio',
+            logIndex: 0,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              `0x${self.slice(2).toLowerCase().padStart(64, '0')}`,
+              `0x${'9d8b8b7c476ab02306046f3da719d380fa0456aa'.padStart(64, '0')}`,
+            ],
+            data: `0x${(1_000_000n).toString(16).padStart(64, '0')}`,
+          },
+        ]
+      }
+      return []
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    // Pins strict `>`: equality must not signal (D30).
+    expect(result.error).toBeUndefined()
+    const transfer = result.items.find((i) => i.kind === 'transfer')
+    expect(transfer?.kind).toBe('transfer')
+    if (transfer?.kind === 'transfer') {
+      expect(transfer.txHash).toBe('0xexact-ratio')
+    }
+  })
+
+  it('signals when within-window getLogs loss exceeds the signal ratio', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    // Three chunks; fail two on the USDC outgoing direction only → 2/3 > 0.5.
+    expect(2 / 3).toBeGreaterThan(CHUNK_LOSS_SIGNAL_RATIO)
+    mockPublicClient.getBlockNumber.mockResolvedValue(5000n)
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { address, fromBlock, args } = (params ?? {}) as {
+        address?: string
+        fromBlock?: bigint
+        args?: { from?: string; to?: string }
+      }
+      const isUsdcOutgoing =
+        address?.toLowerCase() === token.toLowerCase() &&
+        args?.from?.toLowerCase() === self.toLowerCase()
+      if (isUsdcOutgoing && (fromBlock === 2000n || fromBlock === 4000n)) {
+        throw new Error('chunk rejected')
+      }
+      if (isUsdcOutgoing && fromBlock === 0n) {
+        return [
+          {
+            address: token,
+            blockNumber: 100n,
+            transactionHash: '0xheavy-loss',
+            logIndex: 0,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              `0x${self.slice(2).toLowerCase().padStart(64, '0')}`,
+              `0x${'9d8b8b7c476ab02306046f3da719d380fa0456aa'.padStart(64, '0')}`,
+            ],
+            data: `0x${(1_000_000n).toString(16).padStart(64, '0')}`,
+          },
+        ]
+      }
+      return []
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toMatch(
+      /token history partial: 1 of 6 token-directions incomplete \(2 of 3 getLogs chunks failed\)/,
+    )
+    const transfer = result.items.find((i) => i.kind === 'transfer')
+    expect(transfer?.kind).toBe('transfer')
+    if (transfer?.kind === 'transfer') {
+      expect(transfer.txHash).toBe('0xheavy-loss')
+    }
+  })
+
+  it('rejects when every token-direction fails and native history also fails', async () => {
+    mockPublicClient.getBlockNumber
+      .mockResolvedValueOnce(1000n) // token tip
+      .mockRejectedValueOnce(new Error('native tip failed')) // native scan tip
+    mockPublicClient.getLogs.mockRejectedValue(new Error('block range rejected'))
+
+    await expect(
+      getTransfers(
+        'fortel2-sepolia',
+        '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+      ),
+    ).rejects.toThrow(/eth_getLogs failed for every chunk/)
   })
 
   it('filters unknown ERC-20s out of tokentx results', async () => {

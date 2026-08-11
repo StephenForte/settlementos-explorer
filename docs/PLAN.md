@@ -140,20 +140,20 @@ F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
 F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
 F6q  clear GHSA-frvp-7c67-39w9          ✅ merged #38 (D25)
-F6r  eth_getLogs capability liveness    🔄 #41 (with F6s)
-F6s  partial token getLogs must survive 🔄 #41 — closes with F6r
+F6r  eth_getLogs capability liveness    ✅ merged #41 (D27)
+F6s  partial token getLogs must survive ✅ merged #41 — D29 retired unused
+F6t  signal within-window getLogs loss  🔄 this PR (D30)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6t`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6u`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 
-**`D28` is retired, not free.** Pre-assigned to F6r as optional for a `TransfersResult`
-shape fork. F6r implemented the floor without changing the exported shape, so the
-identifier was correctly unused. Burned rather than recycled. **`D29`** is pre-assigned
-to F6s the same way — retire unused if the specified approach lands.
+**`D28` and `D29` are retired, not free.** Pre-assigned to F6r / F6s and correctly
+declined. Burned rather than recycled. **`D30`** is used by F6t for the within-window
+loss threshold.
 
 **`D22` is retired, not free.** Pre-assigned to F6p as optional. F6p hit no design fork —
 a session-local boolean latched during render, reset on `networkId` change — so the worker
