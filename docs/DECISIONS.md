@@ -34,9 +34,10 @@ F6r for the `TransfersResult` fork and correctly declined — the floor needed n
 change — and it was **also an off-by-one**: `D27` was the true next-free when that dispatch was
 written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what counts as total
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
-than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste — an optional identifier costs one line in a
-dispatch and removes the chance of two parallel workers claiming the same number. Take `D30` only
-from the plan, never by reading for the highest number here.
+than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
+an optional identifier costs one line in a dispatch and removes the chance of two parallel
+workers claiming the same number. Take `D30` only from the plan, never by reading for the
+highest number here.
 
 ---
 
