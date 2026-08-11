@@ -78,11 +78,43 @@ const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
 const LOG_WINDOW_BLOCKS = 50_000n
 /** Block span per eth_getLogs request — also the liveness capability probe width. */
 export const LOG_CHUNK = 2_000n
+/**
+ * Within-window getLogs loss above this ratio surfaces as TransfersResult.error.
+ * At-or-below stays silent — public RPCs often reject a minority of chunks (D30).
+ */
+export const CHUNK_LOSS_SIGNAL_RATIO = 0.5
 /** Recent-block window for native tx discovery (no explorer / indexer). */
 const NATIVE_SCAN_BLOCKS = 2_000n
 const NATIVE_SCAN_CONCURRENCY = 16
 /** Match explorer txlist page size. */
 const NATIVE_RESULT_LIMIT = 100
+
+type ChunkedLogsResult = {
+  logs: Log[]
+  chunksAttempted: number
+  chunksFailed: number
+}
+
+function chunkLossWorthSignalling(
+  chunksAttempted: number,
+  chunksFailed: number,
+): boolean {
+  return (
+    chunksAttempted > 0 &&
+    chunksFailed > 0 &&
+    chunksFailed / chunksAttempted > CHUNK_LOSS_SIGNAL_RATIO
+  )
+}
+
+/** Dedupe identical failure messages; keep one representative per distinct text. */
+function summarizeDirectionFailures(failures: Error[]): string {
+  const counts = new Map<string, number>()
+  for (const err of failures) {
+    const msg = err.message || 'failed'
+    counts.set(msg, (counts.get(msg) ?? 0) + 1)
+  }
+  return [...counts.keys()].join('; ')
+}
 
 interface EtherscanTokentxRow {
   hash: string
@@ -313,7 +345,7 @@ async function getLogsChunked(
     fromBlock: bigint
     toBlock: bigint
   },
-): Promise<Log[]> {
+): Promise<ChunkedLogsResult> {
   const client = getPublicClient(networkId)
   const logs: Log[] = []
   let start = params.fromBlock
@@ -336,7 +368,7 @@ async function getLogsChunked(
       logs.push(...chunk)
     } catch {
       // Skip failed chunks — public RPCs often reject some eth_getLogs windows.
-      // Partial results still render; only total failure is surfaced (below).
+      // Survivors still return; heavy within-window loss is signalled by the caller (D30).
       chunksFailed += 1
     }
     start = end + 1n
@@ -348,7 +380,7 @@ async function getLogsChunked(
       `eth_getLogs failed for every chunk in the ${chunksAttempted}-chunk window`,
     )
   }
-  return logs
+  return { logs, chunksAttempted, chunksFailed }
 }
 
 async function fetchRpcTransfers(
@@ -365,6 +397,32 @@ async function fetchRpcTransfers(
   const allLogs: Array<{ log: Log; token: TokenMeta }> = []
   const directionFailures: Error[] = []
   let directionAttempts = 0
+  let incompleteDirections = 0
+  let incompleteChunksFailed = 0
+  let incompleteChunksAttempted = 0
+
+  const recordDirection = (
+    settled: PromiseSettledResult<ChunkedLogsResult>,
+    token: TokenMeta,
+  ) => {
+    if (settled.status === 'fulfilled') {
+      for (const log of settled.value.logs) {
+        allLogs.push({ log, token })
+      }
+      const { chunksAttempted, chunksFailed } = settled.value
+      if (chunkLossWorthSignalling(chunksAttempted, chunksFailed)) {
+        incompleteDirections += 1
+        incompleteChunksFailed += chunksFailed
+        incompleteChunksAttempted += chunksAttempted
+      }
+      return
+    }
+    directionFailures.push(
+      settled.reason instanceof Error
+        ? settled.reason
+        : new Error(String(settled.reason)),
+    )
+  }
 
   for (const token of tokens) {
     const [outgoing, incoming] = await Promise.allSettled([
@@ -382,30 +440,8 @@ async function fetchRpcTransfers(
       }),
     ])
     directionAttempts += 2
-
-    if (outgoing.status === 'fulfilled') {
-      for (const log of outgoing.value) {
-        allLogs.push({ log, token })
-      }
-    } else {
-      directionFailures.push(
-        outgoing.reason instanceof Error
-          ? outgoing.reason
-          : new Error(String(outgoing.reason)),
-      )
-    }
-
-    if (incoming.status === 'fulfilled') {
-      for (const log of incoming.value) {
-        allLogs.push({ log, token })
-      }
-    } else {
-      directionFailures.push(
-        incoming.reason instanceof Error
-          ? incoming.reason
-          : new Error(String(incoming.reason)),
-      )
-    }
+    recordDirection(outgoing, token)
+    recordDirection(incoming, token)
   }
 
   // Every token×direction window failed — not a quiet empty history (F6r).
@@ -465,13 +501,23 @@ async function fetchRpcTransfers(
 
   transfers.sort((a, b) => b.blockNumber - a.blockNumber)
 
+  const partialParts: string[] = []
+  if (directionFailures.length > 0) {
+    partialParts.push(
+      `${directionFailures.length} of ${directionAttempts} token-directions failed — ${summarizeDirectionFailures(directionFailures)}`,
+    )
+  }
+  if (incompleteDirections > 0) {
+    partialParts.push(
+      `${incompleteDirections} of ${directionAttempts} token-directions incomplete (${incompleteChunksFailed} of ${incompleteChunksAttempted} getLogs chunks failed)`,
+    )
+  }
+
   return {
     transfers,
     error:
-      directionFailures.length > 0
-        ? `token history partial: ${directionFailures
-            .map((e) => e.message)
-            .join('; ')}`
+      partialParts.length > 0
+        ? `token history partial: ${partialParts.join('; ')}`
         : undefined,
   }
 }

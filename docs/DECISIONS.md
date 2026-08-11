@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D30`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26` and `D27` are below.
+**Next free identifier: `D31`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27` and `D30` are below.
 **`D18`, `D19`, `D22`, `D28` and `D29` are all retired unused.** `D18`, `D19` and `D22` were pre-assigned
 to F6n, F6o and F6p respectively, published in those dispatches, and correctly declined because
 none hit a design fork: each used the mechanism its dispatch specified. `D28` was pre-assigned to
@@ -36,7 +36,7 @@ written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what c
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
 than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
 an optional identifier costs one line in a dispatch and removes the chance of two parallel
-workers claiming the same number. Take `D30` only from the plan, never by reading for the
+workers claiming the same number. Take `D31` only from the plan, never by reading for the
 highest number here.
 
 ---
@@ -816,3 +816,19 @@ highest number here.
   be revisited rather than worked around.
 
   **`D28` is retired, not free** — see the identifier note at the top of this file.
+
+### D30: within-window getLogs loss signals only above half the chunks
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-11
+- Source: F6t
+- Detail: `getLogsChunked` now returns attempted/failed chunk counts with the
+  surviving logs. A direction whose failed/attempted ratio is **greater than
+  0.5** contributes to `TransfersResult.error` as
+  `N of M token-directions incomplete (X of Y getLogs chunks failed)`. Loss at
+  or below half stays silent — public RPCs often reject a minority of
+  `eth_getLogs` windows, and a permanent Partial-history banner would train
+  users to ignore the signal. Total chunk failure still throws (F6r); sibling
+  direction survival still soft-errors (F6s). Soft error text also carries
+  `N of M token-directions failed` and dedupes identical messages rather than
+  joining repeats. `truncated` remains explorer-outage-only.
