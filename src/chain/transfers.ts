@@ -354,7 +354,7 @@ async function getLogsChunked(
 async function fetchRpcTransfers(
   networkId: NetworkId,
   address: string,
-): Promise<TransferEvent[]> {
+): Promise<{ transfers: TransferEvent[]; error?: string }> {
   const client = getPublicClient(networkId)
   const latest = await client.getBlockNumber()
   const fromBlock =
@@ -363,9 +363,11 @@ async function fetchRpcTransfers(
   const tokens = getTokens(networkId)
 
   const allLogs: Array<{ log: Log; token: TokenMeta }> = []
+  const directionFailures: Error[] = []
+  let directionAttempts = 0
 
   for (const token of tokens) {
-    const [outgoing, incoming] = await Promise.all([
+    const [outgoing, incoming] = await Promise.allSettled([
       getLogsChunked(networkId, {
         address: token.address as Address,
         args: { from: addr },
@@ -379,9 +381,37 @@ async function fetchRpcTransfers(
         toBlock: latest,
       }),
     ])
-    for (const log of [...outgoing, ...incoming]) {
-      allLogs.push({ log, token })
+    directionAttempts += 2
+
+    if (outgoing.status === 'fulfilled') {
+      for (const log of outgoing.value) {
+        allLogs.push({ log, token })
+      }
+    } else {
+      directionFailures.push(
+        outgoing.reason instanceof Error
+          ? outgoing.reason
+          : new Error(String(outgoing.reason)),
+      )
     }
+
+    if (incoming.status === 'fulfilled') {
+      for (const log of incoming.value) {
+        allLogs.push({ log, token })
+      }
+    } else {
+      directionFailures.push(
+        incoming.reason instanceof Error
+          ? incoming.reason
+          : new Error(String(incoming.reason)),
+      )
+    }
+  }
+
+  // Every token×direction window failed — not a quiet empty history (F6r).
+  // Partial survival returns below with error set (F6s).
+  if (directionAttempts > 0 && directionFailures.length === directionAttempts) {
+    throw directionFailures[0]!
   }
 
   const seen = new Set<string>()
@@ -434,7 +464,16 @@ async function fetchRpcTransfers(
     .filter((t): t is TransferEvent => t != null)
 
   transfers.sort((a, b) => b.blockNumber - a.blockNumber)
-  return transfers
+
+  return {
+    transfers,
+    error:
+      directionFailures.length > 0
+        ? `token history partial: ${directionFailures
+            .map((e) => e.message)
+            .join('; ')}`
+        : undefined,
+  }
 }
 
 /**
@@ -634,9 +673,13 @@ async function fetchTransfers(
     } catch (err) {
       error = err instanceof Error ? err.message : 'Explorer API failed'
       try {
-        transfers = await fetchRpcTransfers(networkId, address)
+        const rpc = await fetchRpcTransfers(networkId, address)
+        transfers = rpc.transfers
         source = 'rpc-logs'
         truncated = true
+        if (rpc.error) {
+          error = `${error}; ${rpc.error}`
+        }
       } catch (fallbackErr) {
         return {
           items: [],
@@ -653,20 +696,25 @@ async function fetchTransfers(
     // Token history comes from eth_getLogs; native txs from a recent-block scan
     // (value transfers leave no ERC-20 Transfer log).
     // Do not mark truncated — that flag means explorer outage / degraded fallback.
-    // Reject when both sources fail. If only one fails, keep any partial items
-    // and set error so the UI does not treat an empty timeline as a quiet wallet.
+    // Reject when both sources hard-fail. Soft partial token failure keeps any
+    // transfers and sets error so the UI does not treat a partial timeline as complete.
     const [tokenResult, nativeResult] = await Promise.allSettled([
       fetchRpcTransfers(networkId, address),
       fetchRpcNativeTxs(networkId, address),
     ])
-    transfers =
-      tokenResult.status === 'fulfilled' ? tokenResult.value : []
-    native = nativeResult.status === 'fulfilled' ? nativeResult.value : []
-    source = 'rpc-logs'
 
-    const failures: string[] = []
-    if (tokenResult.status === 'rejected') {
-      failures.push(
+    const softErrors: string[] = []
+    let tokenHardFail = false
+    let nativeHardFail = false
+
+    if (tokenResult.status === 'fulfilled') {
+      transfers = tokenResult.value.transfers
+      if (tokenResult.value.error) {
+        softErrors.push(tokenResult.value.error)
+      }
+    } else {
+      tokenHardFail = true
+      softErrors.push(
         `token history: ${
           tokenResult.reason instanceof Error
             ? tokenResult.reason.message
@@ -674,8 +722,12 @@ async function fetchTransfers(
         }`,
       )
     }
-    if (nativeResult.status === 'rejected') {
-      failures.push(
+
+    if (nativeResult.status === 'fulfilled') {
+      native = nativeResult.value
+    } else {
+      nativeHardFail = true
+      softErrors.push(
         `native history: ${
           nativeResult.reason instanceof Error
             ? nativeResult.reason.message
@@ -684,7 +736,9 @@ async function fetchTransfers(
       )
     }
 
-    if (failures.length === 2) {
+    source = 'rpc-logs'
+
+    if (tokenHardFail && nativeHardFail) {
       const reason =
         tokenResult.status === 'rejected' &&
         tokenResult.reason instanceof Error
@@ -692,8 +746,8 @@ async function fetchTransfers(
           : new Error('RPC history failed')
       throw reason
     }
-    if (failures.length === 1) {
-      error = failures[0]
+    if (softErrors.length > 0) {
+      error = softErrors.join('; ')
     }
   }
 

@@ -312,6 +312,113 @@ describe('getTransfers', () => {
     expect(result.error).toMatch(/eth_getLogs failed for every chunk/)
   })
 
+  it('keeps a healthy token transfer when a sibling token fails every chunk', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const mockJpy = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
+    mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { address, args } = (params ?? {}) as {
+        address?: string
+        args?: { from?: string; to?: string }
+      }
+      if (address?.toLowerCase() === mockJpy.toLowerCase()) {
+        throw new Error('block range rejected')
+      }
+      if (
+        address?.toLowerCase() === mockUsdc.toLowerCase() &&
+        args?.from?.toLowerCase() === self.toLowerCase()
+      ) {
+        return [
+          {
+            address: mockUsdc,
+            blockNumber: 100n,
+            transactionHash: '0xhealthy-usdc',
+            logIndex: 0,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              `0x${self.slice(2).toLowerCase().padStart(64, '0')}`,
+              `0x${'9d8b8b7c476ab02306046f3da719d380fa0456aa'.padStart(64, '0')}`,
+            ],
+            data: `0x${(1_000_000n).toString(16).padStart(64, '0')}`,
+          },
+        ]
+      }
+      return []
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toMatch(/token history partial/)
+    const transfer = result.items.find((i) => i.kind === 'transfer')
+    expect(transfer?.kind).toBe('transfer')
+    if (transfer?.kind === 'transfer') {
+      expect(transfer.txHash).toBe('0xhealthy-usdc')
+      expect(transfer.token.symbol).toBe('mockUSDC')
+    }
+  })
+
+  it('keeps the successful direction when the other direction fails for a token', async () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+    mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
+      const { address, args } = (params ?? {}) as {
+        address?: string
+        args?: { from?: string; to?: string }
+      }
+      // Outgoing always fails; incoming for mockUSDC succeeds.
+      if (args?.from) {
+        throw new Error('outgoing window rejected')
+      }
+      if (
+        address?.toLowerCase() === mockUsdc.toLowerCase() &&
+        args?.to?.toLowerCase() === self.toLowerCase()
+      ) {
+        return [
+          {
+            address: mockUsdc,
+            blockNumber: 101n,
+            transactionHash: '0xincoming-only',
+            logIndex: 0,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              `0x${'5128889f20ec13e0be38b2bebc568594159b652d'.padStart(64, '0')}`,
+              `0x${self.slice(2).toLowerCase().padStart(64, '0')}`,
+            ],
+            data: `0x${(2_000_000n).toString(16).padStart(64, '0')}`,
+          },
+        ]
+      }
+      return []
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toMatch(/token history partial/)
+    const transfer = result.items.find((i) => i.kind === 'transfer')
+    expect(transfer?.kind).toBe('transfer')
+    if (transfer?.kind === 'transfer') {
+      expect(transfer.txHash).toBe('0xincoming-only')
+    }
+  })
+
+  it('returns a clean empty result when every getLogs call succeeds with no transfers', async () => {
+    mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
+    mockPublicClient.getLogs.mockResolvedValue([])
+
+    const result = await getTransfers(
+      'fortel2-sepolia',
+      '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+    expect(result.source).toBe('rpc-logs')
+    expect(result.truncated).toBe(false)
+    expect(result.error).toBeUndefined()
+    expect(result.items.filter((i) => i.kind === 'transfer')).toHaveLength(0)
+  })
+
   it('returns logs from successful chunks when some getLogs chunks fail', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
     const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
