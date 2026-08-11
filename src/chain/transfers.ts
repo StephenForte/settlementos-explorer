@@ -76,7 +76,8 @@ export interface TransfersResult {
 
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
 const LOG_WINDOW_BLOCKS = 50_000n
-const LOG_CHUNK = 2_000n
+/** Block span per eth_getLogs request — also the liveness capability probe width. */
+export const LOG_CHUNK = 2_000n
 /** Recent-block window for native tx discovery (no explorer / indexer). */
 const NATIVE_SCAN_BLOCKS = 2_000n
 const NATIVE_SCAN_CONCURRENCY = 16
@@ -316,11 +317,14 @@ async function getLogsChunked(
   const client = getPublicClient(networkId)
   const logs: Log[] = []
   let start = params.fromBlock
+  let chunksAttempted = 0
+  let chunksFailed = 0
   while (start <= params.toBlock) {
     const end =
       start + LOG_CHUNK - 1n > params.toBlock
         ? params.toBlock
         : start + LOG_CHUNK - 1n
+    chunksAttempted += 1
     try {
       const chunk = await client.getLogs({
         address: params.address,
@@ -331,9 +335,18 @@ async function getLogsChunked(
       })
       logs.push(...chunk)
     } catch {
-      // Skip failed chunks — public RPCs often reject wide eth_getLogs.
+      // Skip failed chunks — public RPCs often reject some eth_getLogs windows.
+      // Partial results still render; only total failure is surfaced (below).
+      chunksFailed += 1
     }
     start = end + 1n
+  }
+  // Every chunk errored — not a quiet empty history. Callers set TransfersResult.error
+  // (or reject); do not reuse `truncated` (that flag means explorer outage).
+  if (chunksAttempted > 0 && chunksFailed === chunksAttempted) {
+    throw new Error(
+      `eth_getLogs failed for every chunk in the ${chunksAttempted}-chunk window`,
+    )
   }
   return logs
 }

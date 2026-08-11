@@ -140,12 +140,12 @@ F6n  cache write from a superseded epoch  ✅ merged #28 — D18 retired unused
 F6o  Overview RPC dead-end                ✅ merged #31 — D19 retired unused
 F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
 F6q  clear GHSA-frvp-7c67-39w9          ✅ merged #38 (D25)
-F6r  (next free identifier)
+F6r  eth_getLogs capability liveness    🔄 PR open — see handoff
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6r`.** Assign from here; do not grep for the highest
+**Next free identifier: `F6s`.** Assign from here; do not grep for the highest
 and add one. Parallel workers that each derive their own ID collide, and a
 collision is harder to detect than an impossible number.
 

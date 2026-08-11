@@ -1,9 +1,10 @@
 /// <reference types="node" />
 import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
+import { LOG_CHUNK } from '../chain/transfers'
+import { getEnv } from '../lib/env'
 import { getAddressesForNetwork, type AddressRole } from './address-book'
 import { NETWORKS, type NetworkId } from './networks'
-import { getEnv } from '../lib/env'
 
 /**
  * Chain liveness checks against live RPCs (D11 / D13 / D14).
@@ -43,13 +44,19 @@ const PUBLIC_RPC_TIMEOUT_MS = 15_000
 /** Public networks share a 10-row address book (must match live block expectations). */
 const PUBLIC_ROWS_PER_NETWORK = 10
 /**
- * Suite budget must cover eth_chainId + one eth_getCode per row at the per-request
- * timeout, plus a small margin for assertion overhead — not an independent literal.
+ * Suite budget must cover eth_chainId + one eth_getCode per row + eth_blockNumber +
+ * eth_getLogs (capability) at the per-request timeout, plus a small margin.
  */
 const PUBLIC_SUITE_TIMEOUT_MARGIN_MS = 15_000
+/** chainId + getCode×rows + blockNumber + getLogs */
+const PUBLIC_LIVENESS_RPC_CALLS = PUBLIC_ROWS_PER_NETWORK + 3
 const PUBLIC_SUITE_TIMEOUT_MS =
-  PUBLIC_RPC_TIMEOUT_MS * (PUBLIC_ROWS_PER_NETWORK + 1) +
+  PUBLIC_RPC_TIMEOUT_MS * PUBLIC_LIVENESS_RPC_CALLS +
   PUBLIC_SUITE_TIMEOUT_MARGIN_MS
+
+/** ERC-20 Transfer — same event the app's getLogsChunked requests. */
+const TRANSFER_EVENT_TOPIC =
+  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 
 type JsonRpcSuccess = { jsonrpc: string; id: number; result: string }
 
@@ -116,13 +123,20 @@ function isRateLimitRpcError(error: {
   )
 }
 
-async function jsonRpc(
+async function jsonRpcFetch(
   rpcUrl: string,
   method: string,
   params: unknown[],
   timeoutMs = 5_000,
   availabilityAware = false,
-): Promise<string> {
+  /**
+   * When true (eth_getLogs capability path), JSON-RPC errors always fail —
+   * including `-32005` / "limit exceeded". Range-limit rejections often reuse
+   * those codes (D15/thirdweb); routing them to skip would hide the missing
+   * capability. HTTP throttle statuses still skip when availabilityAware.
+   */
+  jsonRpcErrorsAlwaysFail = false,
+): Promise<unknown> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -142,9 +156,14 @@ async function jsonRpc(
     }
     const body = (await res.json()) as JsonRpcSuccess & {
       error?: { code?: unknown; message?: string }
+      result?: unknown
     }
     if (body.error) {
-      if (availabilityAware && isRateLimitRpcError(body.error)) {
+      if (
+        !jsonRpcErrorsAlwaysFail &&
+        availabilityAware &&
+        isRateLimitRpcError(body.error)
+      ) {
         const detail = body.error.message ?? `code ${String(body.error.code)}`
         throw new RpcUnavailableError(
           `RPC rate-limited for ${method}: ${detail}`,
@@ -154,13 +173,78 @@ async function jsonRpc(
         `RPC error for ${method}: ${body.error.message ?? 'unknown error'}`,
       )
     }
-    if (typeof body.result !== 'string') {
-      throw new Error(`RPC ${method}: missing string result`)
-    }
     return body.result
   } finally {
     clearTimeout(timer)
   }
+}
+
+async function jsonRpc(
+  rpcUrl: string,
+  method: string,
+  params: unknown[],
+  timeoutMs = 5_000,
+  availabilityAware = false,
+): Promise<string> {
+  const result = await jsonRpcFetch(
+    rpcUrl,
+    method,
+    params,
+    timeoutMs,
+    availabilityAware,
+  )
+  if (typeof result !== 'string') {
+    throw new Error(`RPC ${method}: missing string result`)
+  }
+  return result
+}
+
+/**
+ * eth_getLogs at the app's LOG_CHUNK span. Asserts the endpoint accepted the
+ * request — empty arrays are healthy. Does not assert non-empty results.
+ */
+async function assertEthGetLogsCapability(opts: {
+  rpcUrl: string
+  tokenAddress: string
+  timeoutMs?: number
+  availabilityAware?: boolean
+}): Promise<{ fromBlock: bigint; toBlock: bigint }> {
+  const timeoutMs = opts.timeoutMs ?? 5_000
+  const availabilityAware = opts.availabilityAware === true
+  const latestHex = await jsonRpc(
+    opts.rpcUrl,
+    'eth_blockNumber',
+    [],
+    timeoutMs,
+    availabilityAware,
+  )
+  const latest = BigInt(latestHex)
+  const toBlock = latest
+  const fromBlock =
+    latest + 1n >= LOG_CHUNK ? latest - (LOG_CHUNK - 1n) : 0n
+
+  const result = await jsonRpcFetch(
+    opts.rpcUrl,
+    'eth_getLogs',
+    [
+      {
+        address: opts.tokenAddress,
+        fromBlock: `0x${fromBlock.toString(16)}`,
+        toBlock: `0x${toBlock.toString(16)}`,
+        topics: [TRANSFER_EVENT_TOPIC],
+      },
+    ],
+    timeoutMs,
+    availabilityAware,
+    true, // range-limit JSON-RPC errors must fail, not skip (F6r / Trap 2)
+  )
+
+  if (!Array.isArray(result)) {
+    throw new Error(
+      `RPC eth_getLogs: expected array result, got ${typeof result}`,
+    )
+  }
+  return { fromBlock, toBlock }
 }
 
 async function probeRpcUrl(
@@ -307,6 +391,16 @@ async function assertAddressBookLiveness(opts: {
       expect.fail(`${tag}: unexpected role for liveness check`)
     }
   }
+
+  // eth_getLogs at LOG_CHUNK — capability the app relies on; empty [] is healthy.
+  const tokenRow = rows.find((r) => r.role === 'token-contract')
+  expect(tokenRow, 'address book must include a token-contract row').toBeDefined()
+  await assertEthGetLogsCapability({
+    rpcUrl: opts.rpcUrl,
+    tokenAddress: tokenRow!.address,
+    timeoutMs,
+    availabilityAware,
+  })
 }
 
 /**
@@ -929,8 +1023,142 @@ describe('public suite timeout budget', () => {
     expect(PUBLIC_ROWS_PER_NETWORK).toBe(
       getAddressesForNetwork('polygon-amoy').length,
     )
+    expect(PUBLIC_LIVENESS_RPC_CALLS).toBe(PUBLIC_ROWS_PER_NETWORK + 3)
     expect(PUBLIC_SUITE_TIMEOUT_MS).toBeGreaterThanOrEqual(
-      PUBLIC_RPC_TIMEOUT_MS * (PUBLIC_ROWS_PER_NETWORK + 1),
+      PUBLIC_RPC_TIMEOUT_MS * PUBLIC_LIVENESS_RPC_CALLS,
     )
+  })
+})
+
+/**
+ * Helpers for getLogs capability stub tests — healthy chainId + getCode for every
+ * row, then a custom eth_getLogs (and eth_blockNumber) response.
+ */
+function healthyPublicLivenessStub(opts: {
+  onGetLogs: () => { status?: number; body: unknown }
+  onBlockNumber?: () => { status?: number; body: unknown }
+  captureGetLogs?: (params: unknown[]) => void
+}): (method: string, params: unknown[]) => { status?: number; body: unknown } {
+  const rows = getAddressesForNetwork('base-sepolia')
+  return (method, params) => {
+    if (method === 'eth_chainId') {
+      return { body: { jsonrpc: '2.0', id: 1, result: '0x14a34' } }
+    }
+    if (method === 'eth_getCode') {
+      const address = String(params[0] ?? '').toLowerCase()
+      const isContract = rows.some(
+        (r) =>
+          r.address.toLowerCase() === address && CONTRACT_ROLES.has(r.role),
+      )
+      return {
+        body: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: isContract ? '0x6080604052' : '0x',
+        },
+      }
+    }
+    if (method === 'eth_blockNumber') {
+      if (opts.onBlockNumber) return opts.onBlockNumber()
+      // High enough that fromBlock..toBlock span equals LOG_CHUNK.
+      return { body: { jsonrpc: '2.0', id: 1, result: '0x10000' } }
+    }
+    if (method === 'eth_getLogs') {
+      opts.captureGetLogs?.(params)
+      return opts.onGetLogs()
+    }
+    return { body: { jsonrpc: '2.0', id: 1, result: '0x' } }
+  }
+}
+
+describe('eth_getLogs capability (F6r)', () => {
+  it('issues eth_getLogs over a span equal to LOG_CHUNK', async () => {
+    let captured: unknown[] | undefined
+    const url = await startJsonRpcStub(
+      healthyPublicLivenessStub({
+        captureGetLogs: (params) => {
+          captured = params
+        },
+        onGetLogs: () => ({
+          body: { jsonrpc: '2.0', id: 1, result: [] },
+        }),
+      }),
+    )
+
+    const span = await assertEthGetLogsCapability({
+      rpcUrl: url,
+      tokenAddress: '0x2066738d535681d28d0841cc2503c1c531d4d6aa',
+    })
+    expect(span.toBlock - span.fromBlock + 1n).toBe(LOG_CHUNK)
+    expect(captured).toBeDefined()
+    const filter = captured![0] as {
+      fromBlock: string
+      toBlock: string
+      topics: string[]
+    }
+    expect(BigInt(filter.fromBlock)).toBe(span.fromBlock)
+    expect(BigInt(filter.toBlock)).toBe(span.toBlock)
+    expect(filter.topics[0]).toBe(TRANSFER_EVENT_TOPIC)
+  })
+
+  it('range-limit rejection on eth_getLogs fails the liveness suite (does not skip)', async () => {
+    const url = await startJsonRpcStub(
+      healthyPublicLivenessStub({
+        onGetLogs: () => ({
+          body: {
+            jsonrpc: '2.0',
+            id: 1,
+            // Same shape thirdweb used for range rejection (D15) — must fail, not skip.
+            error: { code: -32005, message: 'block range too large' },
+          },
+        }),
+      }),
+    )
+
+    await expect(
+      evaluateLivenessBlock({
+        rpcUrl: url,
+        networkId: 'base-sepolia',
+        expectedChainId: 84532,
+        expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+      }),
+    ).rejects.toThrow(/eth_getLogs/)
+  })
+
+  it('HTTP 429 on eth_getLogs still skips (availability class)', async () => {
+    const url = await startJsonRpcStub(
+      healthyPublicLivenessStub({
+        onGetLogs: () => ({
+          status: 429,
+          body: { error: 'too many requests' },
+        }),
+      }),
+    )
+
+    const result = await evaluateLivenessBlock({
+      rpcUrl: url,
+      networkId: 'base-sepolia',
+      expectedChainId: 84532,
+      expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+    })
+    expect(result).toBe('skipped')
+  })
+
+  it('empty eth_getLogs array is healthy (does not require Transfer events)', async () => {
+    const url = await startJsonRpcStub(
+      healthyPublicLivenessStub({
+        onGetLogs: () => ({
+          body: { jsonrpc: '2.0', id: 1, result: [] },
+        }),
+      }),
+    )
+
+    const result = await evaluateLivenessBlock({
+      rpcUrl: url,
+      networkId: 'base-sepolia',
+      expectedChainId: 84532,
+      expectedRowCount: PUBLIC_ROWS_PER_NETWORK,
+    })
+    expect(result).toBe('passed')
   })
 })
