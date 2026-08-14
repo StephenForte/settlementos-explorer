@@ -988,3 +988,16 @@ highest number here.
   `undefined` — rather than hiding or badging it. Neither was a fork worth an
   entry. Burned rather than recycled, as D18/D19/D22/D28/D29 were.
 
+### D36: retired unused — F6w hit no design fork
+- Status: RETIRED
+- Type: design-choice
+- Date: 2026-08-14
+- Source: F6w
+- Detail: Pre-assigned as optional for whether the tool result carries the full
+  calldata or only the selector summary, and how `otherNetworks` is represented.
+  F6w returns `summarizeInput` (selector + byteLength) rather than the full hex,
+  matching the page default, and lists the other two network ids as a string
+  array so an agent can retry. Both were specified by the dispatch rather than
+  chosen against an alternative. Burned rather than recycled, as
+  D18/D19/D22/D28/D29/D35 were.
+
