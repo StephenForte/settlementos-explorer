@@ -5,6 +5,14 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import * as z from 'zod/v4'
 import { getBalances } from '../../src/chain/balances.ts'
+import {
+  formatGwei,
+  getTransactionDetail,
+  parseTxHash,
+  summarizeInput,
+  type MinedTxLookup,
+  type PendingTxLookup,
+} from '../../src/chain/transaction.ts'
 import { getTransfers } from '../../src/chain/transfers.ts'
 import {
   ADDRESS_BOOK,
@@ -13,6 +21,7 @@ import {
   getEntity,
   getEntityWallets,
   isEntityId,
+  labelForAddress,
   lookupAddress,
   type AddressRole,
 } from '../../src/config/address-book.ts'
@@ -37,6 +46,57 @@ const ROLES = [
 function parseNetworkId(value: string | undefined): NetworkId | null {
   if (!value) return null
   return isNetworkId(value) ? value : null
+}
+
+function labelledParty(networkId: NetworkId, address: string | null) {
+  if (!address) return null
+  return {
+    address,
+    label: labelForAddress(networkId, address),
+  }
+}
+
+function pendingTransactionPayload(detail: PendingTxLookup) {
+  return {
+    status: 'pending' as const,
+    networkId: detail.networkId,
+    txHash: detail.hash,
+    from: labelledParty(detail.networkId, detail.from),
+    to: labelledParty(detail.networkId, detail.to),
+    value: detail.value,
+    nonce: detail.nonce,
+    gas: detail.gas,
+    type: detail.type,
+    input: summarizeInput(detail.input),
+  }
+}
+
+function minedTransactionPayload(detail: MinedTxLookup) {
+  return {
+    status: 'mined' as const,
+    networkId: detail.networkId,
+    txHash: detail.hash,
+    receiptStatus: detail.receiptStatus,
+    blockNumber: detail.blockNumber,
+    confirmations: detail.confirmations,
+    timestamp: detail.timestamp,
+    from: labelledParty(detail.networkId, detail.from),
+    to: labelledParty(detail.networkId, detail.to),
+    value: detail.value,
+    l2ExecutionFeeWei: detail.l2ExecutionFeeWei,
+    l2ExecutionFeeGwei:
+      detail.l2ExecutionFeeWei != null
+        ? formatGwei(detail.l2ExecutionFeeWei)
+        : null,
+    gasUsed: detail.gasUsed,
+    gas: detail.gas,
+    effectiveGasPrice: detail.effectiveGasPrice,
+    nonce: detail.nonce,
+    transactionIndex: detail.transactionIndex,
+    type: detail.type,
+    input: summarizeInput(detail.input),
+    logs: detail.logs,
+  }
 }
 
 export function filterAddressBook(filters: {
@@ -225,6 +285,62 @@ export function createExplorerMcpServer(): McpServer {
       } catch (err) {
         return toolError(
           err instanceof Error ? err.message : 'Could not load transfers.',
+        )
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_transaction',
+    {
+      title: 'Get transaction',
+      description:
+        'Read a transaction by hash: status, labelled counterparties, L2 execution fee, and decoded escrow/ERC-20 logs (public RPC).',
+      inputSchema: {
+        networkId: z
+          .string()
+          .describe('base-sepolia | fortel2-sepolia | polygon-amoy'),
+        txHash: z.string().describe('0x… 32-byte hash'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ networkId, txHash }) => {
+      const net = parseNetworkId(networkId)
+      if (!net) {
+        return toolError(
+          `Invalid networkId. Use one of: ${NETWORK_IDS.join(', ')}`,
+        )
+      }
+      const parsed = parseTxHash(txHash)
+      if (!parsed) {
+        return toolError(
+          'Invalid txHash. Expected a 0x-prefixed 32-byte hex string.',
+        )
+      }
+      try {
+        const detail = await getTransactionDetail(net, parsed)
+        if (detail.status === 'invalid') {
+          return toolError(
+            'Invalid txHash. Expected a 0x-prefixed 32-byte hex string.',
+          )
+        }
+        if (detail.status === 'not_found') {
+          return textJson([
+            {
+              status: 'not_found',
+              networkId: net,
+              txHash: parsed,
+              otherNetworks: NETWORK_IDS.filter((id) => id !== net),
+            },
+          ])
+        }
+        if (detail.status === 'pending') {
+          return textJson([pendingTransactionPayload(detail)])
+        }
+        return textJson([minedTransactionPayload(detail)])
+      } catch (err) {
+        return toolError(
+          err instanceof Error ? err.message : 'Could not load transaction.',
         )
       }
     },
