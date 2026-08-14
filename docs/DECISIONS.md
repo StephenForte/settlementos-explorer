@@ -976,3 +976,15 @@ highest number here.
   compete with; the internal view stays reachable by direct URL on every network,
   which is how the page is tested against Base Sepolia.
 
+### D35: retired unused — F6v hit no design fork
+- Status: RETIRED
+- Type: design-choice
+- Date: 2026-08-14
+- Source: F6v
+- Detail: Pre-assigned as optional for whether a block-hash URL canonicalizes to
+  the number form, or how the OP-stack deposit tx is badged. F6v lowercases hash
+  params (mirroring F6u) without replacing them with the block number, and
+  renders the deposit row as a plain transaction — type `—` when viem's `type` is
+  `undefined` — rather than hiding or badging it. Neither was a fork worth an
+  entry. Burned rather than recycled, as D18/D19/D22/D28/D29 were.
+

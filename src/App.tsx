@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { AddressDetailPage } from './pages/AddressDetailPage'
+import { BlockPage } from './pages/BlockPage'
 import { EntityPage } from './pages/EntityPage'
 import { GraphPage } from './pages/GraphPage'
 import { OverviewPage } from './pages/OverviewPage'
@@ -20,6 +21,10 @@ export default function App() {
         <Route path="/:networkId/graph" element={<GraphPage />} />
         <Route path="/:networkId/address/:address" element={<AddressDetailPage />} />
         <Route path="/:networkId/tx/:txHash" element={<TransactionPage />} />
+        <Route
+          path="/:networkId/block/:blockNumberOrHash"
+          element={<BlockPage />}
+        />
         <Route path="*" element={<Navigate to="/base-sepolia" replace />} />
       </Route>
     </Routes>
