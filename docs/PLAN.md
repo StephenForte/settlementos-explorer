@@ -142,14 +142,22 @@ F6p  override control unmounts mid-reload ✅ merged #33 — D22 retired unused
 F6q  clear GHSA-frvp-7c67-39w9          ✅ merged #38 (D25)
 F6r  eth_getLogs capability liveness    ✅ merged #41 (D27)
 F6s  partial token getLogs must survive ✅ merged #41 — D29 retired unused
-F6t  signal within-window getLogs loss  🔄 this PR (D30)
+F6t  signal within-window getLogs loss  ✅ merged #43 (D30)
+F6u  ForteL2 transaction detail page    📋 specced, not dispatched (D33 req, D34 opt)
+F6v  ForteL2 block detail page          📋 specced, not dispatched — serialize behind F6u
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6u`.** Assign from here; do not grep for the highest
-and add one. Parallel workers that each derive their own ID collide, and a
-collision is harder to detect than an impossible number.
+**Next free identifier: `F6w`.** `F6u` and `F6v` are **taken** — specced in
+[`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md) but not yet dispatched, which is exactly
+the state the pre-assignment rule exists to protect. Assign from here; do not
+grep for the highest and add one. Parallel workers that each derive their own ID
+collide, and a collision is harder to detect than an impossible number.
+
+**`F6w` is the likely MCP `get_transaction` tool** — a real parity gap once F6u
+lands, listed as a follow-up in the PRD rather than folded into it, because the
+MCP surface carries its own auth and rate-limit tests.
 
 **`D28` and `D29` are retired, not free.** Pre-assigned to F6r / F6s and correctly
 declined. Burned rather than recycled. **`D30`** is used by F6t for the within-window
