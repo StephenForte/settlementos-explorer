@@ -1001,3 +1001,17 @@ highest number here.
   chosen against an alternative. Burned rather than recycled, as
   D18/D19/D22/D28/D29/D35 were.
 
+### D37: retired unused — F6x hit no design fork
+- Status: RETIRED
+- Type: design-choice
+- Date: 2026-08-14
+- Source: F6x
+- Detail: Pre-assigned as optional for whether `not_found` on a block-hash
+  lookup should hint other networks the way F6w's tx-hash `not_found` does. A
+  block number is chain-local trivia; a hash is theoretically portable. F6x
+  keeps one `not_found` shape for both — `{status, networkId, queried, hint}`
+  with the F6v page copy and no `otherNetworks` — because splitting by lookup
+  kind would teach agents two payload shapes for one answer, and a ForteL2
+  block hash is not a payment that might live on another corridor. Burned
+  rather than recycled, as D18/D19/D22/D28/D29/D35/D36 were.
+

@@ -112,6 +112,26 @@ describe('/api/health + /mcp gate', () => {
     expect(String(err)).toMatch(/Bearer|invalid_token|Authorization/i)
   })
 
+  it('returns 401 for an unauthenticated get_block call', async () => {
+    const app = createApp({ mcpApiKey: MCP_KEY, warn: () => {} })
+    const { status } = await requestJson(app, '/mcp', {
+      method: 'POST',
+      body: {
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        id: 1,
+        params: {
+          name: 'get_block',
+          arguments: {
+            networkId: 'fortel2-sepolia',
+            blockNumberOrHash: '979595',
+          },
+        },
+      },
+    })
+    expect(status).toBe(401)
+  })
+
   it('returns 401 for an unauthenticated get_transaction call', async () => {
     const app = createApp({ mcpApiKey: MCP_KEY, warn: () => {} })
     const { status } = await requestJson(app, '/mcp', {
@@ -457,6 +477,7 @@ describe('/mcp tools', () => {
       const names = tools.tools.map((t) => t.name).sort()
       expect(names).toEqual([
         'get_balances',
+        'get_block',
         'get_entity',
         'get_transaction',
         'get_transfers',
