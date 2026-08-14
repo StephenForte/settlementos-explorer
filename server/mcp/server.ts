@@ -6,6 +6,12 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import * as z from 'zod/v4'
 import { getBalances } from '../../src/chain/balances.ts'
 import {
+  getBlockDetail,
+  parseBlockId,
+  type BlockTxRow,
+  type FoundBlockLookup,
+} from '../../src/chain/block.ts'
+import {
   formatGwei,
   getTransactionDetail,
   parseTxHash,
@@ -96,6 +102,38 @@ function minedTransactionPayload(detail: MinedTxLookup) {
     type: detail.type,
     input: summarizeInput(detail.input),
     logs: detail.logs,
+  }
+}
+
+function blockTxRowPayload(networkId: NetworkId, row: BlockTxRow) {
+  return {
+    hash: row.hash,
+    from: labelledParty(networkId, row.from),
+    to: labelledParty(networkId, row.to),
+    value: row.value,
+    // JSON.stringify drops keys whose value is undefined. OP-stack deposit
+    // txs arrive with type: undefined; map to null so every row carries the key.
+    type: row.type ?? null,
+  }
+}
+
+function foundBlockPayload(detail: FoundBlockLookup) {
+  return {
+    status: 'found' as const,
+    networkId: detail.networkId,
+    number: detail.number,
+    hash: detail.hash,
+    parentHash: detail.parentHash,
+    timestamp: detail.timestamp,
+    gasUsed: detail.gasUsed,
+    gasLimit: detail.gasLimit,
+    baseFeePerGas: detail.baseFeePerGas,
+    miner: labelledParty(detail.networkId, detail.miner),
+    head: detail.head,
+    txCount: detail.transactions.length,
+    transactions: detail.transactions.map((row) =>
+      blockTxRowPayload(detail.networkId, row),
+    ),
   }
 }
 
@@ -341,6 +379,61 @@ export function createExplorerMcpServer(): McpServer {
       } catch (err) {
         return toolError(
           err instanceof Error ? err.message : 'Could not load transaction.',
+        )
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_block',
+    {
+      title: 'Get block',
+      description:
+        'Read a block by number or hash: header fields, labelled miner, and labelled transaction rows (public RPC).',
+      inputSchema: {
+        networkId: z
+          .string()
+          .describe('base-sepolia | fortel2-sepolia | polygon-amoy'),
+        blockNumberOrHash: z
+          .string()
+          .describe('decimal block number or 0x… 32-byte block hash'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ networkId, blockNumberOrHash }) => {
+      const net = parseNetworkId(networkId)
+      if (!net) {
+        return toolError(
+          `Invalid networkId. Use one of: ${NETWORK_IDS.join(', ')}`,
+        )
+      }
+      const parsed = parseBlockId(blockNumberOrHash)
+      if (!parsed) {
+        return toolError(
+          'Invalid blockNumberOrHash. Expected a decimal block number or a 0x-prefixed 32-byte block hash.',
+        )
+      }
+      try {
+        const detail = await getBlockDetail(net, parsed.canonical)
+        if (detail.status === 'invalid') {
+          return toolError(
+            'Invalid blockNumberOrHash. Expected a decimal block number or a 0x-prefixed 32-byte block hash.',
+          )
+        }
+        if (detail.status === 'not_found') {
+          return textJson([
+            {
+              status: 'not_found',
+              networkId: net,
+              queried: detail.queried,
+              hint: 'This node may not have this block yet, or its history may be pruned.',
+            },
+          ])
+        }
+        return textJson([foundBlockPayload(detail)])
+      } catch (err) {
+        return toolError(
+          err instanceof Error ? err.message : 'Could not load block.',
         )
       }
     },
