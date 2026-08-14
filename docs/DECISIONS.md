@@ -26,7 +26,10 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D32`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27`, `D30` and `D31` are below.
+**Next free identifier: `D35`.** `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
+required; internal-vs-external tx link precedence — optional) in
+[`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md); do not take either for other work.
+`D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27`, `D30`, `D31` and `D32` are below.
 **`D18`, `D19`, `D22`, `D28` and `D29` are all retired unused.** `D18`, `D19` and `D22` were pre-assigned
 to F6n, F6o and F6p respectively, published in those dispatches, and correctly declined because
 none hit a design fork: each used the mechanism its dispatch specified. `D28` was pre-assigned to
@@ -36,7 +39,7 @@ written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what c
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
 than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
 an optional identifier costs one line in a dispatch and removes the chance of two parallel
-workers claiming the same number. Take `D32` only from the plan, never by reading for the
+workers claiming the same number. Take `D35` only from the plan, never by reading for the
 highest number here.
 
 ---
@@ -893,3 +896,53 @@ highest number here.
   overlay. **The structure supports full ForteL2 divergence even if CREATE addresses
   happen to reproduce.** Operational steps: `docs/FORTEL2-REKEY.md`.
 
+
+### D32: browser reach to a ForteL2 endpoint — build-time URL, no server proxy
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-13
+- Source: F6 (planning for F6u/F6v, `docs/TX-VIEWER-PRD.md`)
+- Detail: ForteL2 has no public RPC today, so the SPA reads chain 852 from
+  `http://127.0.0.1:9545` (D4) and works **only on the ForteL2 host**. That is
+  accepted, not a gap to close now. When a public replica exists it is one env
+  var — `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` — and `BUILTIN_RPC_URLS` in
+  `src/lib/clients.ts` already orders `readRpcUrl` **first** and the sequencer
+  last, so reads prefer it with no code change. Recorded because three
+  properties of that path are invisible until they cost a day.
+
+  **1. The URL is build-time, not runtime.** Vite inlines `import.meta.env` into
+  the bundle. Setting the variable on Render and restarting the service serves
+  the *old* bundle with the *old* URL compiled in — it needs a **rebuild and
+  redeploy**. `.env.example` already warns that `VITE_*` is inlined and public;
+  this is the operational consequence of the same fact. Same trap for
+  `VITE_ETHERSCAN_API_KEY`.
+
+  **2. The replica must send CORS headers.** The browser calls the endpoint
+  directly, so it needs `Access-Control-Allow-Origin` for the site's origin
+  (op-geth: `--http.corsdomain`, plus `--http.vhosts` behind a proxy). Without
+  it every call fails in the browser while `curl` from the same box succeeds.
+  **That asymmetry is the whole trap** — the endpoint tests healthy by every
+  means except the one that matters, which is the same shape as trap 4 and trap
+  8 in PLAN §6: something that never really ran reading as a clean result.
+
+  **3. The replica should terminate TLS.** A deployed site is HTTPS, and a plain
+  `http://` endpoint is active mixed content the browser blocks.
+  `validateRpcOverrideUrl` accepts `http:` **by design** (D16 — a user on the
+  ForteL2 LAN may legitimately need it), so the app will store an endpoint the
+  browser then refuses. Do not "fix" that by rejecting `http:` in validation; it
+  would break the loopback and LAN cases the override exists for. Local dev has
+  no issue at all — an `http://localhost` page calling an `http://` RPC is not
+  mixed content, and browsers treat loopback as trustworthy (Safari least so).
+
+  **Smallest alternative considered and declined: proxy chain 852 through the
+  existing Express app** (`/api/rpc/fortel2-sepolia` → sequencer). It would
+  dissolve both CORS and mixed content, and make the endpoint runtime
+  configuration rather than a rebuild. Declined for now on three counts: it makes
+  this repo a **write-capable relay** to a sequencer that currently trusts its
+  loopback bind for protection, inverting the "no keys, no writes, public data
+  only" posture in the README; it needs its own rate limiting and method
+  allowlist to not be an open proxy; and it splits what the chain-liveness suite
+  verifies (the endpoint in `NETWORKS`) from what the browser actually calls —
+  the same split D31 rejects for addresses. **Revisit if and only if a public
+  replica proves impossible**, and record it as a new entry rather than editing
+  this one.

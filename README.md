@@ -25,6 +25,12 @@ Optional: copy `.env.example` to `.env` and set `VITE_ETHERSCAN_API_KEY` for hig
 
 ForteL2 defaults to `http://127.0.0.1:9545` (Mac sequencer). Override with `VITE_FORTEL2_SEPOLIA_RPC_URL`, and optionally set `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` to the Render replica for reads.
 
+ForteL2 reads therefore work **on the ForteL2 host** and read `unavailable` elsewhere (D4). Pointing a deployed site at a public replica later is just `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` — no code change, since `clients.ts` already prefers `readRpcUrl` for reads. Three prerequisites that are easy to miss, all in **D32**:
+
+- **`VITE_*` is inlined at build time** — set it on Render and **rebuild**; a restart re-serves the old bundle with the old URL compiled in.
+- **The replica must send CORS headers** for the site's origin (op-geth `--http.corsdomain`, `--http.vhosts`). Without them every browser call fails while `curl` from the same box succeeds.
+- **The replica should terminate TLS** — a plain `http://` endpoint is mixed content that an HTTPS site's browser blocks. Loopback (`http://127.0.0.1`) is exempt in most browsers; plain-`http` local dev is unaffected.
+
 ### Full stack (SPA + MCP server)
 
 ```bash
