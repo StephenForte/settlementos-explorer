@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `e2af36b` | after #39. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
-| Test suite | **137 total** — `137 passed / 0 skipped` on the ForteL2 host, `136 passed / 1 skipped` anywhere else | `npm test` on `pr38` (= `ed4dbee`) in an **isolated clone** (24 files); **all three chain blocks live** — ForteL2 36ms, Base 1284ms, Amoy 4640ms, real `eth_getCode` |
+| `main` | `a70924d` | after #47. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **155 total, 24 files** — `154 passed / 1 skipped` **both** on the ForteL2 host and in CI, but **the skipped test is not the same one** (see below) | re-measured 2026-08-14 on `a70924d`. Host: `npm test`, three consecutive runs, identical. CI: run `31770437432` on `a70924d`, `154 passed / 1 skipped`. **The old `137` was stale by 18 tests — do not quote it** |
 | `npm audit` | **`found 0 vulnerabilities`** | re-run by the reviewer on `pr38` in an isolated clone after `npm ci` (exit 0). Cleared by F6q — see **D25** |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
@@ -143,8 +143,8 @@ F6q  clear GHSA-frvp-7c67-39w9          ✅ merged #38 (D25)
 F6r  eth_getLogs capability liveness    ✅ merged #41 (D27)
 F6s  partial token getLogs must survive ✅ merged #41 — D29 retired unused
 F6t  signal within-window getLogs loss  ✅ merged #43 (D30)
-F6u  ForteL2 transaction detail page    📋 specced, not dispatched (D33 req, D34 opt)
-F6v  ForteL2 block detail page          📋 specced, not dispatched — serialize behind F6u
+F6u  ForteL2 transaction detail page    📋 dispatch-ready (D33 req, D34 opt)
+F6v  ForteL2 block detail page          📋 specced — serialize behind F6u, do NOT parallelise
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
@@ -382,6 +382,24 @@ Hot zones despite the ownership split:
 
 ## 5. Model tiering
 
+### Per-task dispatch record
+
+Recorded here so the operator does not re-derive it from a chat message that has
+scrolled away.
+
+| Task | Model | Order | Host | Baseline |
+|---|---|---|---|---|
+| F6u — tx detail page | **strongest** | wave 1, alone | **ForteL2 host required** — acceptance needs a live chain-852 tx; off-host the ForteL2 evidence is unobtainable and the worker will hand back a green, unproven page | `main` after #48 |
+| F6v — block detail page | strong | wave 2, **after F6u merges** | ForteL2 host | `main` after F6u |
+
+F6u is strongest-tier despite being "just a page": it publishes a **URL contract that
+SettlementOS will hardcode** (§4 of the PRD) and a **money figure** (the L2 execution
+fee). Both fail silently and both are expensive to change after the fact — §5 model
+tiering, row 1.
+
+**F6u and F6v must not run in parallel.** They share `src/App.tsx` and `src/index.css`,
+and `src/index.css` is the §4 hot zone.
+
 | Task shape | Tier |
 |---|---|
 | Address/chain data where a wrong value ships silently | strongest |
@@ -427,7 +445,34 @@ Each of these has already cost time.
    **Check the exit code, not just the empty output.** Working form:
    `grep -F -- '--ash'`. Scratchpad scripts also can't import `viem`; run node
    from the repo root.
-9. **Skip counts are per-network now; the number alone means nothing.** As of #33
+9. **Skip counts are per-network now; the number alone means nothing.**
+
+   > **Re-measured 2026-08-14 on `a70924d`, and the healthy states below have changed —
+   > read this before the paragraph it corrects.** The suite is **155 tests / 24 files**,
+   > not 137. Both the ForteL2 host and CI report the identical line
+   > `154 passed | 1 skipped (155)` — **and the skipped test is a different one in each
+   > place.** In CI, ForteL2 skips (port 9545 is closed on a GitHub runner; D13). On the
+   > ForteL2 host, **ForteL2 passes and _Polygon Amoy_ skips** — reproduced on three
+   > consecutive runs, its block taking ~4990ms before skipping.
+   >
+   > **This is the exact case trap 9 exists to catch, and the count hides it perfectly:
+   > `1 skipped` is the documented-healthy number in both places, so nothing looks wrong.**
+   > Read the `describe` titles.
+   >
+   > It is **not** a dead endpoint — a fresh #17. `https://polygon-amoy.drpc.org` answered
+   > `eth_chainId` → `0x354`-class success in **85 / 119 / 98 ms** on three straight curls
+   > from the same host, seconds after the skip. The block issues `eth_getCode` for **10
+   > rows** in a burst, so the working hypothesis is per-IP throttling on the burst (a
+   > D14 `429` / `-32005` skip-class response, working as designed) rather than
+   > unavailability. **Unconfirmed** — nobody has yet read which skip-class response
+   > came back.
+   >
+   > **What is not at risk:** CI drift detection. Amoy passes in CI, which is where it
+   > guards. The loss is host-local. **What to do:** do not let a worker "fix" this by
+   > widening a catch. It needs the actual response read first. Candidate follow-up task
+   > — assign from **`F6w`** onward per §1.
+
+   As of #33
    the suite is 137 tests across **three** chain blocks, and all three are live
    (measured on the ForteL2 host: ForteL2 295ms, Base Sepolia 1153ms, Amoy 4378ms —
    the public-chain timings vary by seconds run to run; treat them as liveness evidence,
