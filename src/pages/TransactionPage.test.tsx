@@ -11,6 +11,7 @@ const OPERATOR = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
 const ESCROW = '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
 const TREASURY = '0x1E4ee7a078Bd40d1982dF1978C046f8cD0D1D3AA'
 const UNKNOWN = '0x000000000000000000000000000000000000dEaD'
+const ACME = '0xF7842ac33AFF3dD3a6b195Dd366e7730771EBE5d'
 
 vi.mock('../chain/transaction', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../chain/transaction')>()
@@ -214,6 +215,34 @@ describe('TransactionPage', () => {
     expect(screen.getByText('Not decoded')).toBeInTheDocument()
     expect(screen.getByText('0xdeadbeef')).toBeInTheDocument()
     expect(screen.queryByText('0.000000')).not.toBeInTheDocument()
+  })
+
+  it('renders a PaymentRefunded recipient when only toLabel is set', async () => {
+    mockedGet.mockResolvedValue(
+      minedLookup({
+        logs: [
+          {
+            kind: 'escrow',
+            address: ESCROW,
+            eventName: 'PaymentRefunded',
+            paymentId: `0x${'aa'.repeat(32)}`,
+            to: ACME,
+            toLabel: 'ACME US Inc',
+            amountRaw: 100_000_000_000n,
+            amountFormatted: '100000000000',
+          },
+        ],
+      }),
+    )
+    renderTx(`/fortel2-sepolia/tx/${HASH}`)
+
+    expect(await screen.findByText('PaymentRefunded')).toBeInTheDocument()
+    const recipient = screen.getByRole('link', { name: 'ACME US Inc' })
+    expect(recipient).toHaveAttribute(
+      'href',
+      `/fortel2-sepolia/address/${ACME}`,
+    )
+    expect(recipient.parentElement).toHaveTextContent(/^→\s*ACME US Inc$/)
   })
 
   it('resolves all three URL aliases onto the canonical ForteL2 path (D33)', async () => {

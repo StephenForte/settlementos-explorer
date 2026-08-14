@@ -440,19 +440,23 @@ function LogRow({
           <span className="dir escrow">{log.eventName}</span>
         </td>
         <td>
-          {log.fromLabel && log.toLabel ? (
+          {log.fromLabel || log.toLabel ? (
             <div>
-              {log.from ? (
-                <Link to={`/${networkId}/address/${log.from}`}>{log.fromLabel}</Link>
-              ) : (
-                log.fromLabel
-              )}
+              {log.fromLabel ? (
+                log.from ? (
+                  <Link to={`/${networkId}/address/${log.from}`}>{log.fromLabel}</Link>
+                ) : (
+                  log.fromLabel
+                )
+              ) : null}
               {' → '}
-              {log.to ? (
-                <Link to={`/${networkId}/address/${log.to}`}>{log.toLabel}</Link>
-              ) : (
-                log.toLabel
-              )}
+              {log.toLabel ? (
+                log.to ? (
+                  <Link to={`/${networkId}/address/${log.to}`}>{log.toLabel}</Link>
+                ) : (
+                  log.toLabel
+                )
+              ) : null}
             </div>
           ) : null}
           {log.detail ? <div className="muted small">{log.detail}</div> : null}
