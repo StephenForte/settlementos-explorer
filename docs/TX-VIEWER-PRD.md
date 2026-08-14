@@ -247,12 +247,30 @@ A viewer nothing links to is half a feature. Today
 exact ForteL2 dead end in the screenshot.
 
 Add `src/components/TxLink.tsx`: external explorer link when the network has one,
-internal `<Link to={/{networkId}/tx/{hash}}>` otherwise. Swap it into
-`TransferTable`'s three call sites. Props are unchanged, so
-`AddressDetailPage`, `EntityPage` and `RelationshipGraph` need no edits — but
-**they are listed in the F6u allowlist anyway**, per the F6j lesson in PLAN §2.
+internal `<Link to={/{networkId}/tx/{hash}}>` otherwise.
 
-Leave `ExplorerLink` untouched; address and token links still want it.
+**Correction (2026-08-14, re-verified against `main` at `a70924d`).** This
+section previously said *"swap it into `TransferTable`'s three call sites"* and
+that `EntityPage` therefore needed no edits. **That was wrong, and it would have
+shipped a feature that still dead-ends on the entity page.** There are **six**
+tx-hash render sites, not three, and `EntityPage` builds its own rather than
+inheriting `TransferTable`'s:
+
+| File | Lines | Note |
+|---|---|---|
+| `src/components/TransferTable.tsx` | 42, 87, 166 | token row, native row, escrow row; keyed on the page's `networkId` |
+| `src/pages/EntityPage.tsx` | 250, 278, 301 | its own table — keyed on **`item.networkId`**, because entity rows span networks |
+
+`EntityPage`'s per-row `item.networkId` is the reason it cannot be fixed by a
+prop-compatible swap inside `TransferTable`: the entity table can render a Base
+row and a ForteL2 row adjacently, so precedence (D34) is evaluated per row, not
+per page. Both files are in the F6u allowlist — the correction is to the
+acceptance criteria, not to the file scope.
+
+`AddressDetailPage` (line 80) and `OverviewPage` (line 261) use
+`explorerAddressUrl`, not `explorerTxUrl`. **Leave both alone.**
+`RelationshipGraph` renders no tx hashes at all. Leave `ExplorerLink` itself
+untouched; address and token links still want it.
 
 **Precedence is a judgement call — optional `D34`.** The recommendation is
 external-wins: a Base reader wants Basescan's traces and verified source, and our
@@ -292,9 +310,10 @@ working, not waste.
 `src/chain/transaction.ts` (new) · `src/chain/transaction.test.ts` (new) ·
 `src/pages/TransactionPage.tsx` (new) · `src/pages/TransactionPage.test.tsx`
 (new) · `src/components/TxLink.tsx` (new) ·
-`src/components/TransferTable.tsx` + `.test.tsx` · `src/App.tsx` ·
-`src/index.css` (minimal) · `docs/DECISIONS.md` (append D33, and D34 or its
-retirement).
+`src/components/TransferTable.tsx` + `.test.tsx` ·
+`src/pages/EntityPage.tsx` + `.test.tsx` (its three tx-hash sites, §8) ·
+`src/App.tsx` · `src/index.css` (minimal) · `docs/DECISIONS.md` (append D33, and
+D34 or its retirement).
 
 **Must not touch:** `src/lib/cache.ts`, `src/config/address-book.ts`,
 `src/config/address-book.chain.test.ts`, `src/pages/OverviewPage.tsx`,
@@ -315,8 +334,12 @@ retirement).
 5. Aliases `/tx/<hash>?network=fortel2-sepolia`, `?chainId=852`, and bare
    `/tx/<hash>` all land on the canonical path (or bare is explicitly rejected
    per D33 — state which was chosen and why).
-6. A ForteL2 row in `TransferTable` is now a working internal link; a Base row
-   still points at Basescan.
+6. **All six §8 sites, named individually.** A ForteL2 row is a working internal
+   link and a Base row still points at Basescan, in **both**
+   `TransferTable` (3 sites) **and** `EntityPage` (3 sites). For `EntityPage`,
+   demonstrate a single entity table rendering a Base row and a ForteL2 row
+   adjacently, each resolving per `item.networkId` — the mixed-network case is
+   the one a `TransferTable`-only fix silently misses.
 7. A malformed hash issues **zero** RPC calls — assert on a mocked transport's
    call count, not on the rendered output.
 8. Gate green: `npm run typecheck && npm run lint && npm test && npm run build`.
