@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `90fb57f` | after #49. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
-| Test suite | **184 total, 27 files** — healthy is `184 passed / 0 skipped` or `183 / 1` (Amoy, trap 9) on the ForteL2 host; `183 passed / 1 skipped` (ForteL2) in CI | re-measured 2026-08-14 on `4aa7ded` (#49's head) by the reviewer in an **isolated clone**: two gate re-runs, `183/1` then `184/0` — the Amoy skip is availability, per trap 9. CI green on the same commit |
+| `main` | `330fa1a` | after #51. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **206 total, 30 files** — healthy is `206 passed / 0 skipped` or `205 / 1` (Amoy, trap 9) on the ForteL2 host; `205 passed / 1 skipped` (ForteL2) in CI | re-measured 2026-08-14 on `777bef1` (#51's head) by the reviewer in an **isolated clone**: `206/0`, Amoy live. CI green incl. Bugbot (0 findings) on the same commit |
 | `npm audit` | **`found 0 vulnerabilities`** | re-run by the reviewer on `pr38` in an isolated clone after `npm ci` (exit 0). Cleared by F6q — see **D25** |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
@@ -144,16 +144,26 @@ F6r  eth_getLogs capability liveness    ✅ merged #41 (D27)
 F6s  partial token getLogs must survive ✅ merged #41 — D29 retired unused
 F6t  signal within-window getLogs loss  ✅ merged #43 (D30)
 F6u  ForteL2 transaction detail page    ✅ merged #49 (D33, D34)
-F6v  ForteL2 block detail page          📋 dispatch-ready (D35 opt) — F6u landed, App.tsx free
+F6v  ForteL2 block detail page          ✅ merged #51 — D35 retired unused
+F6w  MCP get_transaction tool           📋 dispatch-ready (D36 opt)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6w`.** `F6u` and `F6v` are **taken** — specced in
+**Next free identifier: `F6x`.** `F6w` is **taken** (dispatch-ready). `F6u` and `F6v` are merged — they were specced in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md) but not yet dispatched, which is exactly
 the state the pre-assignment rule exists to protect. Assign from here; do not
 grep for the highest and add one. Parallel workers that each derive their own ID
 collide, and a collision is harder to detect than an impossible number.
+
+**F6v verification record (2026-08-14).** Merged as #51 (`330fa1a`, one commit, purely
+additive — 1174+/0−). Reviewer: gate re-run in an isolated clone (`206/0`, Amoy live),
+the cited `block-full:` → `block:` mutation re-applied (**3 tests red**, exactly the ones
+the handoff named), and live probes through the real code path — the navigation-order
+flow (tx page primes the header-only cache, block page still gets full tx objects),
+hash-param ≡ number-param, past-head → `not_found` on a live endpoint, head boundary
+within 2 blocks at fetch time. D35 retired with both non-forks named — the sixth optional
+identifier burned correctly. The F6u interim wart (dead block links) is closed.
 
 **F6u verification record (2026-08-14).** Merged as #49 (`90fb57f`, two commits). The
 reviewer did not inherit the worker's greens: gate re-run twice in an isolated clone
@@ -402,7 +412,8 @@ scrolled away.
 | Task | Model | Order | Host | Baseline |
 |---|---|---|---|---|
 | F6u — tx detail page | strongest | ✅ done | ForteL2 host | merged #49 (`90fb57f`); reviewer re-ran the gate in an isolated clone, re-ran the cited mutation (red), and probed the real `getTransactionDetail` against live chain 852 — fee matched to the wei. One Bugbot finding (refund row dropped its recipient) verified and fixed on the PR (`4aa7ded`), proof-of-red re-run by the reviewer |
-| F6v — block detail page | strong | wave 2, alone | **ForteL2 host required** | `main` after #49 (`90fb57f`). **Trap the dispatch names:** F6u caches header-only `getBlock` under `block:{networkId}:{n}`; F6v needs `includeTransactions: true` and MUST use a distinct key (`block-full:…`) or the first page to load poisons the other for the TTL. Also: every 852 block carries an OP-stack deposit tx whose viem `type` is `undefined` here |
+| F6v — block detail page | strong | ✅ done | ForteL2 host | merged #51 (`330fa1a`); reviewer re-ran the gate in isolation (206/0), re-applied the cited cache-key mutation (3 tests red, the ones named), and probed the real navigation-order flow live — F6u's header-only cache primed, then `getBlockDetail` returned full tx objects. Both dispatch traps (`block-full:` key, deposit-tx `type: undefined`) were handled; worker exceeded spec with a defensive throw on hash-only transactions and canonical dedup of zero-padded block numbers |
+| F6w — MCP `get_transaction` | strong | wave 3, alone | **ForteL2 host required** for live evidence | `main` after #51 (`330fa1a`). **Traps the dispatch names:** `http.test.ts` asserts the tool list as an **exact sorted array** — adding a tool reddens it by design, and the fix is adding the name, never weakening to `contains`; `not_found` must be a structured **answer** (`textJson`), never `toolError` — collapsing them reproduces the D13 confusion for agent callers; bigints only via `toJsonSafe`; `server/` must never call `cacheClear`/`invalidatePublicClient` (§4 records why) |
 
 F6u is strongest-tier despite being "just a page": it publishes a **URL contract that
 SettlementOS will hardcode** (§4 of the PRD) and a **money figure** (the L2 execution
