@@ -63,6 +63,27 @@ describe('TransferTable', () => {
     expect(txLinks.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('links ForteL2 hashes internally and Base hashes out to Basescan', () => {
+    render(
+      <MemoryRouter>
+        <TransferTable
+          items={items}
+          self="0xFf489a6d49D68f9D0B564089C545C0768A33205f"
+          networkId="fortel2-sepolia"
+        />
+      </MemoryRouter>,
+    )
+
+    const links = screen.getAllByRole('link')
+    const txLinks = links.filter((a) =>
+      a.getAttribute('href')?.includes('/fortel2-sepolia/tx/'),
+    )
+    expect(txLinks.length).toBeGreaterThanOrEqual(2)
+    expect(
+      links.filter((a) => a.getAttribute('href')?.includes('sepolia.basescan.org/tx/')),
+    ).toHaveLength(0)
+  })
+
   it('shows empty state when there is no activity', () => {
     render(
       <MemoryRouter>

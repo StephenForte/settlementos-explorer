@@ -946,3 +946,33 @@ highest number here.
   the same split D31 rejects for addresses. **Revisit if and only if a public
   replica proves impossible**, and record it as a new entry rather than editing
   this one.
+
+### D33: bare `/tx/<hash>` defaults to ForteL2 Sepolia
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-14
+- Source: F6u
+- Detail: The Basescan-shaped alias `/tx/<hash>` with no `?network=` / `?chainId=`
+  resolves to `/fortel2-sepolia/tx/<hash>`, not the app-wide `base-sepolia` default
+  and not a "network required" error. Base Sepolia and Polygon Amoy have public
+  explorers, so a link *into this app* that omits the network is, by construction,
+  a link for chain 852. `?network=` and `?chainId=` still select any registered
+  network; aliases `<Navigate replace>` onto the canonical `/{networkId}/tx/{hash}`
+  path. Alternative considered: reject bare `/tx/` until a network is stated —
+  safer against a fourth network, but it would break the SettlementOS one-string
+  concat (`baseUrl + '/tx/' + hash`) that this page exists to receive.
+
+### D34: tx hash links prefer the public explorer when the network has one
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-14
+- Source: F6u
+- Detail: `TxLink` renders an external `target=_blank` explorer URL when
+  `explorerTxUrl` is non-null, and an in-app `<Link to=/{networkId}/tx/{hash}>`
+  otherwise. Evaluated per row, so a mixed-network entity table can send a Base
+  row to Basescan and a ForteL2 row inside this app. Alternative considered:
+  always link internally and offer the explorer from the tx page header. Declined
+  because a Base reader wants traces and verified source that this page does not
+  compete with; the internal view stays reachable by direct URL on every network,
+  which is how the page is tested against Base Sepolia.
+
