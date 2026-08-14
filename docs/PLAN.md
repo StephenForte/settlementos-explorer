@@ -19,8 +19,8 @@ method is named — "verified" without a method is how plans start lying.
 
 | Item | State | Evidence |
 |---|---|---|
-| `main` | `fe94964` | after #53. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
-| Test suite | **213 total, 31 files** — healthy is `213 passed / 0 skipped` or `212 / 1` (Amoy, trap 9) on the ForteL2 host; `212 passed / 1 skipped` (ForteL2) in CI | re-measured 2026-08-14 on `e6a7d61` (#53's head) by the reviewer in an **isolated clone**: `213/0`, Amoy live. CI green incl. Bugbot (0 findings) on the same commit |
+| `main` | `5de764f` | after #55. A docs PR cannot record its own merge SHA, so this cell is stale by one commit every time it closes out a docs PR. Re-read `origin/main` rather than trusting it. |
+| Test suite | **221 total, 32 files** — healthy is `221 passed / 0 skipped` or `220 / 1` (Amoy, trap 9) on the ForteL2 host; `220 passed / 1 skipped` (ForteL2) in CI | re-measured 2026-08-14 on `c7c67dd` (#55's head) by the reviewer in an **isolated clone**: `221/0`, Amoy live. CI green incl. Bugbot (0 findings) on the same commit |
 | `npm audit` | **`found 0 vulnerabilities`** | re-run by the reviewer on `pr38` in an isolated clone after `npm ci` (exit 0). Cleared by F6q — see **D25** |
 | Gate | typecheck ✅ lint ✅ build ✅ | all re-run locally, not inherited from CI |
 | `fortel2-sepolia` network registry | **True** | `src/config/networks.ts` on main, predates F6a |
@@ -146,16 +146,29 @@ F6t  signal within-window getLogs loss  ✅ merged #43 (D30)
 F6u  ForteL2 transaction detail page    ✅ merged #49 (D33, D34)
 F6v  ForteL2 block detail page          ✅ merged #51 — D35 retired unused
 F6w  MCP get_transaction tool           ✅ merged #53 — D36 retired unused
-F6x  MCP get_block tool                 📋 dispatch-ready (D37 opt)
+F6x  MCP get_block tool                 ✅ merged #55 — D37 retired unused
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6y`.** `F6x` is **taken** (dispatch-ready). `F6u`, `F6v` and `F6w` are merged — the first two were specced in
+**Next free identifier: `F6y`.** `F6u`–`F6x` are all merged — the first two were specced in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md) but not yet dispatched, which is exactly
 the state the pre-assignment rule exists to protect. Assign from here; do not
 grep for the highest and add one. Parallel workers that each derive their own ID
 collide, and a collision is harder to detect than an impossible number.
+
+**F6x verification record (2026-08-14).** Merged as #55 (`5de764f`, one commit, purely
+additive — 479+/0−). Reviewer: gate re-run in an isolated clone (`221/0`, 32 files), the
+cited `type: row.type ?? null` mutation re-applied (**red with the exact quoted error and
+line**), the handoff's Base tx-count claim recomputed independently against
+`sepolia.base.org` (block 45486394 → **39 txs**, exact), and eight live probes against the
+booted Express app. Four went beyond the handoff's evidence and all held: an **uppercase
+block hash** normalises, a **deposit-only block** still carries `type: null`, **genesis
+block 0** renders `found` without crashing, and a **zero-padded** `0979595` canonicalises.
+Trap 2 verified negatively — `'otherNetworks' in payload === false`, so F6w's tx-hash hint
+was correctly *not* copied. D37 retired with a substantive argument. **MCP parity with the
+viewer pages is complete: `get_transaction` + `get_block`.** Not verified live: the
+transport-failure branch, same as F6w.
 
 **F6w verification record (2026-08-14).** Merged as #53 (`fe94964`, one commit, purely
 additive — 501+/0−). Reviewer: gate re-run in an isolated clone (`213/0`, 31 files), the
@@ -428,7 +441,7 @@ scrolled away.
 | F6u — tx detail page | strongest | ✅ done | ForteL2 host | merged #49 (`90fb57f`); reviewer re-ran the gate in an isolated clone, re-ran the cited mutation (red), and probed the real `getTransactionDetail` against live chain 852 — fee matched to the wei. One Bugbot finding (refund row dropped its recipient) verified and fixed on the PR (`4aa7ded`), proof-of-red re-run by the reviewer |
 | F6v — block detail page | strong | ✅ done | ForteL2 host | merged #51 (`330fa1a`); reviewer re-ran the gate in isolation (206/0), re-applied the cited cache-key mutation (3 tests red, the ones named), and probed the real navigation-order flow live — F6u's header-only cache primed, then `getBlockDetail` returned full tx objects. Both dispatch traps (`block-full:` key, deposit-tx `type: undefined`) were handled; worker exceeded spec with a defensive throw on hash-only transactions and canonical dedup of zero-padded block numbers |
 | F6w — MCP `get_transaction` | strong | ✅ done | ForteL2 host | merged #53 (`fe94964`); reviewer re-ran the gate in isolation (213/0), re-applied the cited not_found→toolError mutation (red, exact quoted error), and probed the booted Express app over real HTTP — golden fixture to the wei, structured not_found, uppercase-hash normalisation, Base Sepolia, unauthenticated 401. Transport-failure branch verified at handler level (mocked), not live — every endpoint here is reachable by construction |
-| F6x — MCP `get_block` | strong | wave 4, alone | **ForteL2 host required** for live evidence | `main` after #53 (`fe94964`). **Traps the dispatch names:** the exact-array tool list is now 7 names → 8, same strengthening rule; `not_found` is an answer, never `toolError`, but do **not** copy F6w's `otherNetworks` blindly — block numbers are chain-specific; JSON round-trips **silently drop `type: undefined`** keys, so the deposit tx's type must be mapped to `null` for a stable payload shape |
+| F6x — MCP `get_block` | strong | ✅ done | ForteL2 host | merged #55 (`5de764f`); reviewer re-ran the gate in isolation (221/0), re-applied the cited `?? null` mutation (red, exact quoted error), recomputed the Base tx count from source (39, exact), and probed the booted server live — plus four edges the handoff did not claim: uppercase block hash, a deposit-only block, **genesis block 0**, and a zero-padded number. All green. Worker branched from live `main` rather than the prompt's stale SHA and disclosed it |
 
 F6u is strongest-tier despite being "just a page": it publishes a **URL contract that
 SettlementOS will hardcode** (§4 of the PRD) and a **money figure** (the L2 execution
