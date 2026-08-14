@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D31`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27` and `D30` are below.
+**Next free identifier: `D32`.** `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27`, `D30` and `D31` are below.
 **`D18`, `D19`, `D22`, `D28` and `D29` are all retired unused.** `D18`, `D19` and `D22` were pre-assigned
 to F6n, F6o and F6p respectively, published in those dispatches, and correctly declined because
 none hit a design fork: each used the mechanism its dispatch specified. `D28` was pre-assigned to
@@ -36,7 +36,7 @@ written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what c
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
 than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
 an optional identifier costs one line in a dispatch and removes the chance of two parallel
-workers claiming the same number. Take `D31` only from the plan, never by reading for the
+workers claiming the same number. Take `D32` only from the plan, never by reading for the
 highest number here.
 
 ---
@@ -851,3 +851,45 @@ highest number here.
   distributed case while leaving the tolerated minority silent. Retry/backoff on failed
   chunks would reduce the underlying loss and was deliberately left out of F6t (request
   profile against rate-limited public RPCs); it remains the other open lever.
+
+### D31: ForteL2 address-book rows are a self-contained compile-time block
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-13
+- Source: F6
+- Detail: Each network is a `NetworkDeployment` assembled by `buildNetworkEntries`.
+  Cross-network sharing of PaymentSettlement / mock tokens / operator is expressed by
+  **aliasing `SHARED_CONTRACTS`** (`contracts: SHARED_CONTRACTS`), which is a statement
+  about the current deploy. ForteL2 re-key replaces `FORTEL2_SEPOLIA_DEPLOYMENT` as one
+  object; giving it a distinct `contracts` value does not touch Base Sepolia or Polygon
+  Amoy. Editing `SHARED_CONTRACTS` itself would still rewrite all three — that is the
+  remaining coupling, and it is the point of the alias. **This supersedes the structural
+  half of D2** (the module could not represent ForteL2 divergence at all). D2's *value*
+  claim remains true today: the three networks still share those CREATE addresses.
+
+  **Compile-time, not runtime config.** A missing env var (or a fetched JSON file that
+  fails) would render wrong or empty addresses on a public explorer — a worse failure
+  than editing a TypeScript file. The chain liveness suite (D11/D13/D14) verifies the
+  values that shipped in the bundle; runtime overlay would split "what the test checks"
+  from "what the site shows." One-user POC; the re-key is a known, noticed event, not
+  a hot-reload. Smallest alternative considered: `VITE_FORTEL2_*` address env vars.
+  Rejected for the silent-wrong-on-the-public-site reason above.
+
+  **Which of the 11 rows re-genesis actually changes — reasoning, not a guess presented
+  as fact.** A CREATE address is `keccak256(rlp([deployer, nonce]))[12:]`. Same key +
+  same nonce produces the same address on any EVM chain, which is why PaymentSettlement
+  (nonce 5), mockUSDC (6), mockJPY (7) and mockSGD (8) currently match across Base,
+  Amoy and ForteL2 (PLAN §0). Re-genesis resets the deployer nonce to 0, so an identical
+  post-wipe sequence with `DEPLOYER_PRIVATE_KEY` *can* reproduce those four. The
+  **operator** row is that key's EOA, not a CREATE address, and survives regardless of
+  nonce. **TokenizedMMF** was nonce 20 via the MMF add-on (D3), not in the 5–8 sequence;
+  a full redeploy that includes the fund will almost certainly land a different nonce,
+  and a deploy with no fund should omit the row. **Treasury + 4 entities** come from
+  `generatePrivateKey()` persisted in the gitignored overlay (D12). That file lives on
+  the deploying host, not on L2, so a chain wipe does not delete it — those five change
+  if and only if the overlay is regenerated, not merely because L2 state was wiped.
+
+  None of that is a guarantee the post-wipe deploy repeats the sequence or keeps the
+  overlay. **The structure supports full ForteL2 divergence even if CREATE addresses
+  happen to reproduce.** Operational steps: `docs/FORTEL2-REKEY.md`.
+
