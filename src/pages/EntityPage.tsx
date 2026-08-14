@@ -11,10 +11,9 @@ import { NETWORKS, type NetworkId } from '../config/networks'
 import { BalanceChips } from '../components/BalanceChips'
 import { StatusBanner } from '../components/StatusBanner'
 import { TransferTable } from '../components/TransferTable'
+import { TxLink } from '../components/TxLink'
 import { useAsync } from '../hooks/useAsync'
 import { formatTimestamp } from '../lib/format'
-import { explorerTxUrl } from '../config/networks'
-import { ExplorerLink } from '../components/ExplorerLink'
 
 export function EntityPage() {
   const { entityId: raw } = useParams()
@@ -247,12 +246,13 @@ function MergedTimeline({
                           </td>
                           <td>{formatTimestamp(item.timestamp)}</td>
                           <td>
-                            <ExplorerLink
-                              href={explorerTxUrl(item.networkId, item.txHash)}
+                            <TxLink
+                              networkId={item.networkId}
+                              hash={item.txHash}
                               className="mono"
                             >
                               {truncateAddress(item.txHash, 6)}
-                            </ExplorerLink>
+                            </TxLink>
                           </td>
                         </tr>
                       )
@@ -275,12 +275,13 @@ function MergedTimeline({
                           </td>
                           <td>{formatTimestamp(item.timestamp)}</td>
                           <td>
-                            <ExplorerLink
-                              href={explorerTxUrl(item.networkId, item.txHash)}
+                            <TxLink
+                              networkId={item.networkId}
+                              hash={item.txHash}
                               className="mono"
                             >
                               {truncateAddress(item.txHash, 6)}
-                            </ExplorerLink>
+                            </TxLink>
                           </td>
                         </tr>
                       )
@@ -298,12 +299,13 @@ function MergedTimeline({
                         </td>
                         <td>{formatTimestamp(item.timestamp)}</td>
                         <td>
-                          <ExplorerLink
-                            href={explorerTxUrl(item.networkId, item.txHash)}
+                          <TxLink
+                            networkId={item.networkId}
+                            hash={item.txHash}
                             className="mono"
                           >
                             {truncateAddress(item.txHash, 6)}
-                          </ExplorerLink>
+                          </TxLink>
                         </td>
                       </tr>
                     )

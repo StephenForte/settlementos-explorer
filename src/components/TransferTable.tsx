@@ -4,10 +4,10 @@ import type {
   TimelineItem,
   TransferEvent,
 } from '../chain/transfers'
-import { explorerTxUrl, type NetworkId } from '../config/networks'
+import { type NetworkId } from '../config/networks'
 import { truncateAddress } from '../config/address-book'
-import { ExplorerLink } from './ExplorerLink'
 import { formatTimestamp } from '../lib/format'
+import { TxLink } from './TxLink'
 
 function TransferRow({
   item,
@@ -39,12 +39,9 @@ function TransferRow({
       </td>
       <td>{formatTimestamp(item.timestamp)}</td>
       <td>
-        <ExplorerLink
-          href={explorerTxUrl(networkId, item.txHash)}
-          className="mono"
-        >
+        <TxLink networkId={networkId} hash={item.txHash} className="mono">
           {truncateAddress(item.txHash, 6)}
-        </ExplorerLink>
+        </TxLink>
       </td>
     </tr>
   )
@@ -84,12 +81,9 @@ function NativeRow({
       </td>
       <td>{formatTimestamp(item.timestamp)}</td>
       <td>
-        <ExplorerLink
-          href={explorerTxUrl(networkId, item.txHash)}
-          className="mono"
-        >
+        <TxLink networkId={networkId} hash={item.txHash} className="mono">
           {truncateAddress(item.txHash, 6)}
-        </ExplorerLink>
+        </TxLink>
       </td>
     </tr>
   )
@@ -163,12 +157,9 @@ export function TransferTable({
                 </td>
                 <td>{formatTimestamp(item.timestamp)}</td>
                 <td>
-                  <ExplorerLink
-                    href={explorerTxUrl(networkId, item.txHash)}
-                    className="mono"
-                  >
+                  <TxLink networkId={networkId} hash={item.txHash} className="mono">
                     {truncateAddress(item.txHash, 6)}
-                  </ExplorerLink>
+                  </TxLink>
                 </td>
               </tr>
             )
