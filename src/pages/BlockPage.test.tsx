@@ -102,7 +102,8 @@ describe('BlockPage', () => {
     const banner = await screen.findByRole('status')
     expect(banner).toHaveClass('tone-warn')
     expect(banner).toHaveTextContent(/not found/i)
-    expect(banner).toHaveTextContent(/may not have this block yet/i)
+    expect(banner).toHaveTextContent(/23:45/)
+    expect(banner).not.toHaveTextContent(/Try Base Sepolia/)
     expect(screen.queryByLabelText(/RPC URL/i)).not.toBeInTheDocument()
   })
 
