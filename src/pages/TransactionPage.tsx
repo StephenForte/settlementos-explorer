@@ -153,6 +153,17 @@ function TxBody({
   }
 
   if (result.status === 'not_found') {
+    if (networkId === 'fortel2-sepolia') {
+      return (
+        <StatusBanner tone="warn">
+          Transaction not found on ForteL2 Sepolia. If you just settled, wait a
+          few seconds and refresh — the public replica can lag the sequencer by
+          a few minutes, and the sequencer itself is offline 23:45–03:00
+          Pacific. SettlementOS payment links are ForteL2-only; this hash will
+          not appear on Base Sepolia or Polygon Amoy.
+        </StatusBanner>
+      )
+    }
     const others = NETWORK_IDS.filter((id) => id !== networkId)
     return (
       <StatusBanner tone="warn">

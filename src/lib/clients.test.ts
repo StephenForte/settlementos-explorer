@@ -5,6 +5,8 @@ import {
   clearNetworkRpcOverride,
   getPublicClient,
   invalidatePublicClient,
+  isLoopbackRpcUrl,
+  orderFortel2RpcUrls,
   resolveRpcUrls,
   setNetworkRpcOverride,
 } from './clients'
@@ -118,6 +120,46 @@ describe('drift guard: liveness suite ignores overrides', () => {
     // Contrast: the app client path does use the override.
     expect(resolveRpcUrls('polygon-amoy')).toEqual([
       'https://personal-endpoint.example/rpc',
+    ])
+  })
+})
+
+describe('orderFortel2RpcUrls (D38)', () => {
+  it('treats loopback and localhost as loopback', () => {
+    expect(isLoopbackRpcUrl('http://127.0.0.1:9545')).toBe(true)
+    expect(isLoopbackRpcUrl('http://localhost:9545')).toBe(true)
+    expect(isLoopbackRpcUrl('https://fortel2-sequencer-rpc.onrender.com')).toBe(
+      false,
+    )
+  })
+
+  it('puts a public sequencer ahead of the replica', () => {
+    expect(
+      orderFortel2RpcUrls(
+        'https://fortel2-sequencer-rpc.onrender.com',
+        'https://fortel2-replica-rpc.onrender.com',
+      ),
+    ).toEqual([
+      'https://fortel2-sequencer-rpc.onrender.com',
+      'https://fortel2-replica-rpc.onrender.com',
+    ])
+  })
+
+  it('puts the replica ahead of a loopback sequencer', () => {
+    expect(
+      orderFortel2RpcUrls(
+        'http://127.0.0.1:9545',
+        'https://fortel2-replica-rpc.onrender.com',
+      ),
+    ).toEqual([
+      'https://fortel2-replica-rpc.onrender.com',
+      'http://127.0.0.1:9545',
+    ])
+  })
+
+  it('keeps a lone loopback sequencer when no replica is set', () => {
+    expect(orderFortel2RpcUrls('http://127.0.0.1:9545')).toEqual([
+      'http://127.0.0.1:9545',
     ])
   })
 })

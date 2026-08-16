@@ -898,7 +898,7 @@ highest number here.
 
 
 ### D32: browser reach to a ForteL2 endpoint — build-time URL, no server proxy
-- Status: APPROVED
+- Status: SUPERSEDED by D38 (2026-08-16) — public replica is live but L1-derived (~3 min lag); a filtered public sequencer-read gateway is now first. D32's "do not proxy writes through this Express app" still holds.
 - Type: design-choice
 - Date: 2026-08-13
 - Source: F6 (planning for F6u/F6v, `docs/TX-VIEWER-PRD.md`)
@@ -1014,4 +1014,24 @@ highest number here.
   kind would teach agents two payload shapes for one answer, and a ForteL2
   block hash is not a payment that might live on another corridor. Burned
   rather than recycled, as D18/D19/D22/D28/D29/D35/D36 were.
+
+### D38: public sequencer-read first; ForteL2 not-found copy does not send people to Base/Amoy
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-08-16
+- Source: SOS explorer tx links / replica lag
+- Detail: D32 ordered `readRpcUrl` (replica) first because the sequencer was
+  loopback-only. The public replica is live and L1-derived (~3 min lag), so a
+  just-settled escrow hash 404s until catch-up. A **separate** filtered public
+  gateway (`fortel2-sequencer-rpc` in fortel2-replica, R-0009) injects Cloudflare
+  Access and drops `eth_sendRawTransaction`; the browser never talks to
+  `fortel2-write.ente.ltd`. `orderFortel2RpcUrls` puts a non-loopback sequencer
+  URL first and the replica second (viem `fallback` only on transport error, so
+  replica-first would never try the sequencer after a `null` result). Loopback
+  sequencer stays last when a replica is configured so a laptop without the Mac
+  node still works. D32's declined Express proxy still holds.
+
+  ForteL2 `not_found` copy names replica lag and the 23:45–03:00 Pacific
+  sequencer window and does **not** offer Try Base Sepolia / Polygon Amoy —
+  SettlementOS payment links are ForteL2-only. Other corridors keep those links.
 

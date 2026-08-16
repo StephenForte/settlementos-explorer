@@ -28,6 +28,32 @@ const VIEM_CHAINS = {
   'polygon-amoy': polygonAmoy,
 } as const
 
+/** True for the Mac sequencer default and any other loopback RPC. */
+export function isLoopbackRpcUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * D38: a public (non-loopback) sequencer URL goes first so a just-settled tx
+ * is visible in seconds. Loopback sequencer stays last when a replica is
+ * configured, so a laptop without the Mac node still hits the replica.
+ */
+export function orderFortel2RpcUrls(
+  sequencerUrl: string,
+  replicaUrl?: string,
+): string[] {
+  const replica = replicaUrl || undefined
+  if (sequencerUrl && !isLoopbackRpcUrl(sequencerUrl)) {
+    return [sequencerUrl, replica].filter((u): u is string => Boolean(u))
+  }
+  return [replica, sequencerUrl].filter((u): u is string => Boolean(u))
+}
+
 /**
  * Built-in public RPCs only — primary first, then fallbacks when flaky.
  * User overrides layer above this in `resolveRpcUrls`; NETWORKS stays untouched
@@ -39,13 +65,10 @@ const BUILTIN_RPC_URLS: Record<NetworkId, string[]> = {
     'https://base-sepolia-rpc.publicnode.com',
     'https://base-sepolia.drpc.org',
   ],
-  'fortel2-sepolia': [
-    // Prefer replica for reads when configured; sequencer last.
-    ...(NETWORKS['fortel2-sepolia'].readRpcUrl
-      ? [NETWORKS['fortel2-sepolia'].readRpcUrl]
-      : []),
+  'fortel2-sepolia': orderFortel2RpcUrls(
     NETWORKS['fortel2-sepolia'].rpcUrl,
-  ],
+    NETWORKS['fortel2-sepolia'].readRpcUrl,
+  ),
   'polygon-amoy': [
     'https://polygon-amoy.drpc.org',
     'https://polygon-amoy-bor-rpc.publicnode.com',

@@ -23,9 +23,9 @@ npm run dev
 
 Optional: copy `.env.example` to `.env` and set `VITE_ETHERSCAN_API_KEY` for higher Etherscan V2 rate limits. The app works without a key (free tier + `eth_getLogs` fallback).
 
-ForteL2 defaults to `http://127.0.0.1:9545` (Mac sequencer). Override with `VITE_FORTEL2_SEPOLIA_RPC_URL`, and optionally set `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` to the Render replica for reads.
+ForteL2 defaults to `http://127.0.0.1:9545` (Mac sequencer). Override with `VITE_FORTEL2_SEPOLIA_RPC_URL` (the public sequencer-read gateway in production), and set `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` to the Render replica as fallback.
 
-ForteL2 reads therefore work **on the ForteL2 host** and read `unavailable` elsewhere (D4). Pointing a deployed site at a public replica later is just `VITE_FORTEL2_SEPOLIA_READ_RPC_URL` — no code change, since `clients.ts` already prefers `readRpcUrl` for reads. Three prerequisites that are easy to miss, all in **D32**:
+A non-loopback sequencer URL is tried **first** (D38); the replica is second so a just-settled tx is visible in seconds, with the L1-derived replica covering the sequencer's overnight window. Locally, loopback stays last when a replica is set so a laptop without the Mac node still works. Three prerequisites that are easy to miss, all in **D32** (still true for any `VITE_*` RPC URL):
 
 - **`VITE_*` is inlined at build time** — set it on Render and **rebuild**; a restart re-serves the old bundle with the old URL compiled in.
 - **The replica must send CORS headers** for the site's origin (op-geth `--http.corsdomain`, `--http.vhosts`). Without them every browser call fails while `curl` from the same box succeeds.

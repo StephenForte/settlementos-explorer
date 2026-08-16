@@ -43,10 +43,10 @@ the accepted near-term mode. A public visitor to a deployed site gets
 a code gap.
 
 Pointing it at a future public replica is one env var —
-`VITE_FORTEL2_SEPOLIA_READ_RPC_URL`. [clients.ts](src/lib/clients.ts) already
-puts `readRpcUrl` **first** in the ForteL2 URL list and the sequencer last, so
-reads prefer the replica automatically. Nothing in this PRD changes when that
-day comes. Three things that are not obvious:
+`VITE_FORTEL2_SEPOLIA_READ_RPC_URL`. **Superseded by D38 (2026-08-16):** a
+public sequencer-read gateway is first when `VITE_FORTEL2_SEPOLIA_RPC_URL` is
+non-loopback; the replica is fallback. D32's "no Express write proxy" still
+holds. Three things that are not obvious:
 
 - **It is build-time, not runtime.** Vite inlines `import.meta.env` into the
   bundle, so setting the var on Render requires a **rebuild and redeploy** —

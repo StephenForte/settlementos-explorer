@@ -116,9 +116,24 @@ describe('TransactionPage', () => {
     const banner = await screen.findByRole('status')
     expect(banner).toHaveClass('tone-warn')
     expect(banner).toHaveTextContent(/not found/i)
-    expect(banner).toHaveTextContent(/Base Sepolia/)
-    expect(banner).toHaveTextContent(/Polygon Amoy/)
+    expect(banner).toHaveTextContent(/23:45/)
+    expect(banner).toHaveTextContent(/will not appear on Base Sepolia/)
+    expect(banner).not.toHaveTextContent(/Try Base Sepolia/)
+    expect(banner).not.toHaveTextContent(/Try Polygon Amoy/)
     expect(screen.queryByLabelText(/RPC URL/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps Try-other-corridor links on Base Sepolia not-found', async () => {
+    mockedGet.mockResolvedValue({
+      status: 'not_found',
+      networkId: 'base-sepolia',
+      hash: HASH,
+    })
+    renderTx(`/base-sepolia/tx/${HASH}`)
+
+    const banner = await screen.findByRole('status')
+    expect(banner).toHaveTextContent(/Try ForteL2 Sepolia/)
+    expect(banner).toHaveTextContent(/Try Polygon Amoy/)
   })
 
   it('shows an error banner and RpcOverrideForm when the RPC is unreachable', async () => {

@@ -140,6 +140,16 @@ function BlockBody({
   }
 
   if (result.status === 'not_found') {
+    if (networkId === 'fortel2-sepolia') {
+      return (
+        <StatusBanner tone="warn">
+          Block not found on ForteL2 Sepolia. The public replica can lag the
+          sequencer by a few minutes, and the sequencer is offline 23:45–03:00
+          Pacific. Retry shortly — this block will not appear on Base Sepolia
+          or Polygon Amoy.
+        </StatusBanner>
+      )
+    }
     return (
       <StatusBanner tone="warn">
         Block not found on {NETWORKS[networkId].name}. This node may not have
