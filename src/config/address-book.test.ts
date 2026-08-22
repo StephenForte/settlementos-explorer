@@ -7,6 +7,7 @@ import {
   PAYMENT_SETTLEMENT_ADDRESS,
   POLYGON_AMOY_DEPLOYMENT,
   SHARED_CONTRACTS,
+  FORTEL2_SEPOLIA_CONTRACTS,
   TOKENIZED_MMF_ADDRESS,
   buildNetworkEntries,
   filterAddressEntries,
@@ -150,6 +151,9 @@ describe('tokens and entities', () => {
       PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
     )
     expect(getEscrowAddress('fortel2-sepolia')?.toLowerCase()).toBe(
+      FORTEL2_SEPOLIA_CONTRACTS.paymentSettlement.toLowerCase(),
+    )
+    expect(getEscrowAddress('fortel2-sepolia')?.toLowerCase()).not.toBe(
       PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
     )
   })
@@ -157,7 +161,7 @@ describe('tokens and entities', () => {
 
 describe('fortel2-sepolia address book', () => {
   const EXPECTED: Record<string, { role: string; label: string }> = {
-    '0x9d8b8b7c476ab02306046f3da719d380fa0456aa': {
+    '0x57b4a70fef917a0a3de89427f5d6654be0181f04': {
       role: 'escrow-contract',
       label: 'PaymentSettlement',
     },
@@ -165,15 +169,18 @@ describe('fortel2-sepolia address book', () => {
       role: 'mmf-contract',
       label: 'TokenizedMMF',
     },
-    '0x2066738d535681d28d0841cc2503c1c531d4d6aa': {
+    // Post-re-genesis. These three hexes also appear in SHARED_CONTRACTS but
+    // against *different* symbols there — the nonce shift rotated them. Read
+    // the symbol, never the hex, when reasoning about which token this is.
+    '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63': {
       role: 'token-contract',
       label: 'mockUSDC',
     },
-    '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63': {
+    '0x0b6fa033c034d694e876b56f2dd8377a2be5691d': {
       role: 'token-contract',
       label: 'mockJPY',
     },
-    '0x0b6fa033c034d694e876b56f2dd8377a2be5691d': {
+    '0x9d8b8b7c476ab02306046f3da719d380fa0456aa': {
       role: 'token-contract',
       label: 'mockSGD',
     },
@@ -181,23 +188,23 @@ describe('fortel2-sepolia address book', () => {
       role: 'operator',
       label: 'Operator',
     },
-    '0x1e4ee7a078bd40d1982df1978c046f8cd0d1d3aa': {
+    '0x3be68c872f0fcb5d0b204eceaffff8c04f4c9e4e': {
       role: 'treasury',
       label: 'Treasury',
     },
-    '0xf7842ac33aff3dd3a6b195dd366e7730771ebe5d': {
+    '0x0a32b64d50551e39a94be458de982fe9aab573d6': {
       role: 'entity',
       label: 'ACME US Inc',
     },
-    '0x9e024aa6dc77d4cab4c0ad5324ec2b2af43dc116': {
+    '0x66f38c702711b5211abda17f1095c4e572ea7253': {
       role: 'entity',
       label: 'Tokyo Trading KK',
     },
-    '0x15ceb06dae813d2223992c7a40ca0f1f6678b5b0': {
+    '0x424d3ae49bd35e238cebc7fe208aeb79a5c0ed19': {
       role: 'entity',
       label: 'Singapore Imports Pte Ltd',
     },
-    '0xaed29ca4b33504302bda683b99072129432d7797': {
+    '0x9a7c716f58db0478cd4735476267a7472a75c951': {
       role: 'entity',
       label: 'Osaka Parts Co',
     },
@@ -217,11 +224,13 @@ describe('fortel2-sepolia address book', () => {
     expect(Object.keys(EXPECTED)).toHaveLength(11)
   })
 
-  it('keeps TokenizedMMF and ent_osaka_parts distinct despite shared 0xAEd29 prefix', () => {
-    const osakaAddress = '0xAEd29CA4b33504302bda683B99072129432D7797'
+  it('keeps TokenizedMMF and ent_osaka_parts distinct', () => {
+    // Pre-2026-08-22 these two shared a 0xAEd29 prefix, and that collision is
+    // why this test exists — a prefix-matching lookup conflated them. The
+    // re-genesis re-keyed both, so the collision is gone; the guard is kept
+    // because the lookup must distinguish them on any future re-key too.
+    const osakaAddress = '0x9A7c716F58DB0478cD4735476267A7472A75c951'
     expect(TOKENIZED_MMF_ADDRESS.toLowerCase()).not.toBe(osakaAddress.toLowerCase())
-    expect(TOKENIZED_MMF_ADDRESS.slice(0, 7).toLowerCase()).toBe('0xaed29')
-    expect(osakaAddress.slice(0, 7).toLowerCase()).toBe('0xaed29')
 
     const mmf = lookupAddress('fortel2-sepolia', TOKENIZED_MMF_ADDRESS)
     const osaka = lookupAddress('fortel2-sepolia', osakaAddress)
@@ -404,46 +413,46 @@ const PINNED_ADDRESS_BOOK = [
     entityId: 'ent_osaka_parts',
   },
   {
-    address: '0x9d8b8b7c476ab02306046f3da719d380fa0456aa',
+    address: '0x57b4a70fef917a0a3de89427f5d6654be0181f04',
     role: 'escrow-contract',
     label: 'PaymentSettlement',
     networkId: 'fortel2-sepolia',
   },
   {
-    address: '0xaed29387417dad9ab1993332e2c2b99d35ffe7ff',
+    address: '0x24f439f535e1484e1be044d8b079774f6dacb6c9',
     role: 'mmf-contract',
     label: 'TokenizedMMF',
     networkId: 'fortel2-sepolia',
   },
   {
-    address: '0x2066738d535681d28d0841cc2503c1c531d4d6aa',
+    address: '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63',
     role: 'token-contract',
     label: 'mockUSDC',
     networkId: 'fortel2-sepolia',
     token: {
-      address: '0x2066738d535681d28d0841cc2503c1c531d4d6aa',
+      address: '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63',
       decimals: 6,
       symbol: 'mockUSDC',
     },
   },
   {
-    address: '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63',
+    address: '0x0b6fa033c034d694e876b56f2dd8377a2be5691d',
     role: 'token-contract',
     label: 'mockJPY',
     networkId: 'fortel2-sepolia',
     token: {
-      address: '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63',
+      address: '0x0b6fa033c034d694e876b56f2dd8377a2be5691d',
       decimals: 0,
       symbol: 'mockJPY',
     },
   },
   {
-    address: '0x0b6fa033c034d694e876b56f2dd8377a2be5691d',
+    address: '0x9d8b8b7c476ab02306046f3da719d380fa0456aa',
     role: 'token-contract',
     label: 'mockSGD',
     networkId: 'fortel2-sepolia',
     token: {
-      address: '0x0b6fa033c034d694e876b56f2dd8377a2be5691d',
+      address: '0x9d8b8b7c476ab02306046f3da719d380fa0456aa',
       decimals: 6,
       symbol: 'mockSGD',
     },
@@ -455,34 +464,34 @@ const PINNED_ADDRESS_BOOK = [
     networkId: 'fortel2-sepolia',
   },
   {
-    address: '0x1E4ee7a078Bd40d1982dF1978C046f8cD0D1D3AA',
+    address: '0x3bE68C872f0FCB5d0b204eCeAFFff8C04F4c9E4E',
     role: 'treasury',
     label: 'Treasury',
     networkId: 'fortel2-sepolia',
   },
   {
-    address: '0xF7842ac33AFF3dD3a6b195Dd366e7730771EBE5d',
+    address: '0x0A32b64D50551E39a94Be458DE982fE9Aab573D6',
     role: 'entity',
     label: 'ACME US Inc',
     networkId: 'fortel2-sepolia',
     entityId: 'ent_acme_us',
   },
   {
-    address: '0x9E024AA6dc77d4cAB4c0AD5324ec2B2Af43dc116',
+    address: '0x66F38C702711B5211ABdA17F1095C4e572Ea7253',
     role: 'entity',
     label: 'Tokyo Trading KK',
     networkId: 'fortel2-sepolia',
     entityId: 'ent_tokyo_supplier',
   },
   {
-    address: '0x15ceB06dAe813d2223992c7a40cA0F1f6678b5b0',
+    address: '0x424d3ae49bD35E238CEbC7fE208AeB79A5c0eD19',
     role: 'entity',
     label: 'Singapore Imports Pte Ltd',
     networkId: 'fortel2-sepolia',
     entityId: 'ent_sg_supplier',
   },
   {
-    address: '0xAEd29CA4b33504302bda683B99072129432D7797',
+    address: '0x9A7c716F58DB0478cD4735476267A7472A75c951',
     role: 'entity',
     label: 'Osaka Parts Co',
     networkId: 'fortel2-sepolia',
@@ -498,7 +507,9 @@ describe('address-book re-key structure (D31)', () => {
   it('expresses cross-network sharing as an alias of SHARED_CONTRACTS, not a copy', () => {
     expect(BASE_SEPOLIA_DEPLOYMENT.contracts).toBe(SHARED_CONTRACTS)
     expect(POLYGON_AMOY_DEPLOYMENT.contracts).toBe(SHARED_CONTRACTS)
-    expect(FORTEL2_SEPOLIA_DEPLOYMENT.contracts).toBe(SHARED_CONTRACTS)
+    // ForteL2 diverged in the 2026-08-22 re-genesis and must not re-alias:
+    // doing so would silently relabel chain 852 with Base Sepolia's hexes.
+    expect(FORTEL2_SEPOLIA_DEPLOYMENT.contracts).not.toBe(SHARED_CONTRACTS)
   })
 
   it('lets ForteL2 take a distinct escrow without rewriting Base or Amoy', () => {
@@ -532,6 +543,9 @@ describe('address-book re-key structure (D31)', () => {
       PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
     )
     expect(getEscrowAddress('fortel2-sepolia')?.toLowerCase()).toBe(
+      FORTEL2_SEPOLIA_CONTRACTS.paymentSettlement.toLowerCase(),
+    )
+    expect(getEscrowAddress('fortel2-sepolia')?.toLowerCase()).not.toBe(
       PAYMENT_SETTLEMENT_ADDRESS.toLowerCase(),
     )
   })

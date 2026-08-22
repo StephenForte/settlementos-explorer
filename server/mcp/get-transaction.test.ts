@@ -22,9 +22,9 @@ const NOT_FOUND_HASH = ('0x' + '11'.repeat(32)) as Hex
 const TRANSPORT_HASH = ('0x' + '22'.repeat(32)) as Hex
 const PENDING_HASH = ('0x' + '33'.repeat(32)) as Hex
 const OPERATOR = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
-const ESCROW = '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
-const TREASURY = '0x1E4ee7a078Bd40d1982dF1978C046f8cD0D1D3AA'
-const MOCK_USDC = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+const ESCROW = '0x57b4a70fef917a0a3de89427f5d6654be0181f04'
+const TREASURY = '0x3be68c872f0fcb5d0b204eceaffff8c04f4c9e4e'
+const MOCK_USDC = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
 const PAYMENT_ID = ('0x' + 'aa'.repeat(32)) as Hex
 const ROUTE_ID = ('0x' + 'bb'.repeat(32)) as Hex
 
