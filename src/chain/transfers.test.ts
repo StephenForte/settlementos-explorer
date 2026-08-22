@@ -315,8 +315,8 @@ describe('getTransfers', () => {
 
   it('keeps a healthy token transfer when a sibling token fails every chunk', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
-    const mockJpy = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
+    const mockUsdc = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
+    const mockJpy = '0x0b6fa033c034d694e876b56f2dd8377a2be5691d'
     mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { address, args } = (params ?? {}) as {
@@ -369,7 +369,7 @@ describe('getTransfers', () => {
 
   it('keeps the successful direction when the other direction fails for a token', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const mockUsdc = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { address, args } = (params ?? {}) as {
@@ -426,7 +426,7 @@ describe('getTransfers', () => {
     )
     // Force one direction to succeed so we take the soft-partial path, not throw.
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const mockUsdc = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { address, args } = (params ?? {}) as {
         address?: string
@@ -472,7 +472,7 @@ describe('getTransfers', () => {
 
   it('returns a clean non-empty result when every getLogs call succeeds with transfers', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const mockUsdc = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const mockUsdc = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     mockPublicClient.getBlockNumber.mockResolvedValue(1000n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { address, args } = (params ?? {}) as {
@@ -514,7 +514,7 @@ describe('getTransfers', () => {
 
   it('keeps survivors and stays silent when within-window loss is at or below the signal ratio', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const token = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     // Three chunks in [0, 5000]: 0–1999, 2000–3999, 4000–5000.
     // 1/3 failed = below CHUNK_LOSS_SIGNAL_RATIO (0.5).
     expect(1 / 3).toBeLessThanOrEqual(CHUNK_LOSS_SIGNAL_RATIO)
@@ -560,7 +560,7 @@ describe('getTransfers', () => {
 
   it('stays silent when within-window loss equals the signal ratio exactly', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const token = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     // Four chunks in [0, 7999]: 0, 2000, 4000, 6000. Fail exactly two → 0.50.
     expect(2 / 4).toBe(CHUNK_LOSS_SIGNAL_RATIO)
     mockPublicClient.getBlockNumber.mockResolvedValue(7999n)
@@ -605,7 +605,7 @@ describe('getTransfers', () => {
 
   it('signals when within-window getLogs loss exceeds the signal ratio', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
-    const token = '0x2066738d535681d28d0841cc2503c1c531d4d6aa'
+    const token = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     // Three chunks; fail two on the USDC outgoing direction only → 2/3 > 0.5.
     expect(2 / 3).toBeGreaterThan(CHUNK_LOSS_SIGNAL_RATIO)
     mockPublicClient.getBlockNumber.mockResolvedValue(5000n)
