@@ -21,7 +21,7 @@ const SETTLEMENT_HASH =
 const DEPOSIT_HASH =
   '0x1bafb919a9d9d838aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const
 const OPERATOR = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
-const ESCROW = '0x9d8b8b7c476ab02306046f3da719d380fa0456aa'
+const ESCROW = '0x57b4a70fef917a0a3de89427f5d6654be0181f04'
 const DEPOSITOR = '0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001'
 const L1_ATTRS = '0x4200000000000000000000000000000000000015'
 const MINER = '0x4200000000000000000000000000000000000011'
