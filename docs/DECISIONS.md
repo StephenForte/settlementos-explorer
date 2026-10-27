@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D35`.** `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
+**Next free identifier: `D40`.** `D39` is the Render Node 26.12.1 pin. `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
 required; internal-vs-external tx link precedence — optional) in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md); do not take either for other work.
 `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27`, `D30`, `D31` and `D32` are below.
@@ -39,7 +39,7 @@ written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what c
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
 than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
 an optional identifier costs one line in a dispatch and removes the chance of two parallel
-workers claiming the same number. Take `D35` only from the plan, never by reading for the
+workers claiming the same number. Take `D40` only from the plan, never by reading for the
 highest number here.
 
 ---
@@ -1034,4 +1034,29 @@ highest number here.
   ForteL2 `not_found` copy names replica lag and the 23:45–03:00 Pacific
   sequencer window and does **not** offer Try Base Sepolia / Polygon Amoy —
   SettlementOS payment links are ForteL2-only. Other corridors keep those links.
+
+### D39: Render runs Node 26.12.1; PHP and Python security releases do not apply
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-10-27
+- Source: Node.js security releases of 2026-10-21; Render eMudhra advisory; PHP2Shell (CVE-2026-109618, CVE-2026-109619); Python 3.14.10 (2026-10-25)
+- Detail: The live service `settlementos-explorer-ihgo` and `render.yaml` pin
+  `NODE_VERSION` to **26.12.1** (or any later 26.x). That is the Current-line
+  patch for the October 21 high-severity TLS, DNS, and Brotli issues, and it
+  distrusts the compromised eMudhra intermediates. `package.json` `engines`
+  stays `>=20` and CI stays `node-version: 22`, which tracks the latest 22.x
+  (22.23.4 or newer, the LTS patch for the same release). Laptops are not
+  forced onto Current.
+
+  **PHP2Shell needs no change here.** The advisory applies to PHP 8.2–8.5
+  (patched at 8.2.35, 8.3.36, 8.4.27, 8.5.12). This repo has no PHP runtime,
+  Composer manifest, or Dockerfile, and the Render service runtime is `node`.
+
+  **The Python security releases need no change here.** Python 3.14.10 /
+  3.13.18 / 3.12.16 / 3.11.18 (CVE-2026-115557, CVE-2026-114583) and Render's
+  `certifi>=2026.10.19` guidance apply to Python services and apps that ship
+  a Python HTTP stack. This service is not Python. The only Python in the
+  repo is the Semgrep job in `.github/workflows/security-scans.yml`, which
+  asks Actions for `3.x` and does not deploy an interpreter. No
+  `PYTHON_VERSION` pin.
 

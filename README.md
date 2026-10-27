@@ -126,7 +126,7 @@ OAuth discovery: `/.well-known/oauth-authorization-server`, `/.well-known/oauth-
 
 ## Deploy
 
-Preferred host: **Render** via the Blueprint in `render.yaml` (Node web service — serves the SPA and MCP).
+Preferred host: **Render** via the Blueprint in `render.yaml` (Node web service — serves the SPA and MCP). The Blueprint pins `NODE_VERSION` to **26.12.1** (the October 21, 2026 security release) or any later 26.x. Local checkouts and GitHub Actions stay on Node 22. See **D39**.
 
 ### Render (recommended)
 
