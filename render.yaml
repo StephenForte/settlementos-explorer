@@ -14,8 +14,9 @@ services:
     healthCheckPath: /api/health
 
     envVars:
+      # October 21, 2026 security release. Local and CI stay on Node 22 (D39).
       - key: NODE_VERSION
-        value: "22"
+        value: "26.12.1"
       - key: VITE_ETHERSCAN_API_KEY
         sync: false
       - key: MCP_API_KEY

@@ -63,6 +63,7 @@ const BUILTIN_RPC_URLS: Record<NetworkId, string[]> = {
   'base-sepolia': [
     NETWORKS['base-sepolia'].rpcUrl,
     'https://base-sepolia-rpc.publicnode.com',
+    'https://sepolia.base.org',
     'https://base-sepolia.drpc.org',
   ],
   'fortel2-sepolia': orderFortel2RpcUrls(
@@ -70,9 +71,9 @@ const BUILTIN_RPC_URLS: Record<NetworkId, string[]> = {
     NETWORKS['fortel2-sepolia'].readRpcUrl,
   ),
   'polygon-amoy': [
-    'https://polygon-amoy.drpc.org',
-    'https://polygon-amoy-bor-rpc.publicnode.com',
     NETWORKS['polygon-amoy'].rpcUrl,
+    'https://polygon-amoy-bor-rpc.publicnode.com',
+    'https://polygon-amoy.drpc.org',
     'https://rpc-amoy.ankr.com',
   ],
 }

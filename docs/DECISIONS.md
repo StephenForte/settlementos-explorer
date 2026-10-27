@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D35`.** `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
+**Next free identifier: `D42`.** `D41` refreshes the dependency overrides that Trivy flagged. `D40` moves the public getLogs endpoints to publicnode. `D39` is the Render Node 26.12.1 pin. `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
 required; internal-vs-external tx link precedence — optional) in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md); do not take either for other work.
 `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27`, `D30`, `D31` and `D32` are below.
@@ -39,7 +39,7 @@ written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what c
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
 than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
 an optional identifier costs one line in a dispatch and removes the chance of two parallel
-workers claiming the same number. Take `D35` only from the plan, never by reading for the
+workers claiming the same number. Take `D42` only from the plan, never by reading for the
 highest number here.
 
 ---
@@ -288,7 +288,7 @@ highest number here.
   than it looks.
 
 ### D15: Polygon Amoy's replacement RPC endpoint
-- Status: **APPROVED 2026-08-08** — `https://polygon-amoy.drpc.org` (F6i, #24)
+- Status: **SUPERSEDED by D40** (2026-10-27) — dRPC no longer serves a 2000-block `eth_getLogs`. Was **APPROVED 2026-08-08** — `https://polygon-amoy.drpc.org` (F6i, #24)
 - Type: design-choice
 - Date: 2026-08-08
 - Source: F6i / issue #17
@@ -1034,4 +1034,70 @@ highest number here.
   ForteL2 `not_found` copy names replica lag and the 23:45–03:00 Pacific
   sequencer window and does **not** offer Try Base Sepolia / Polygon Amoy —
   SettlementOS payment links are ForteL2-only. Other corridors keep those links.
+
+### D39: Render runs Node 26.12.1; PHP and Python security releases do not apply
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-10-27
+- Source: Node.js security releases of 2026-10-21; Render eMudhra advisory; PHP2Shell (CVE-2026-109618, CVE-2026-109619); Python 3.14.10 (2026-10-25)
+- Detail: The live service `settlementos-explorer-ihgo` and `render.yaml` pin
+  `NODE_VERSION` to **26.12.1** (or any later 26.x). That is the Current-line
+  patch for the October 21 high-severity TLS, DNS, and Brotli issues, and it
+  distrusts the compromised eMudhra intermediates. `package.json` `engines`
+  stays `>=20` and CI stays `node-version: 22`, which tracks the latest 22.x
+  (22.23.4 or newer, the LTS patch for the same release). Laptops are not
+  forced onto Current.
+
+  **PHP2Shell needs no change here.** The advisory applies to PHP 8.2–8.5
+  (patched at 8.2.35, 8.3.36, 8.4.27, 8.5.12). This repo has no PHP runtime,
+  Composer manifest, or Dockerfile, and the Render service runtime is `node`.
+
+  **The Python security releases need no change here.** Python 3.14.10 /
+  3.13.18 / 3.12.16 / 3.11.18 (CVE-2026-115557, CVE-2026-114583) and Render's
+  `certifi>=2026.10.19` guidance apply to Python services and apps that ship
+  a Python HTTP stack. This service is not Python. The only Python in the
+  repo is the Semgrep job in `.github/workflows/security-scans.yml`, which
+  asks Actions for `3.x` and does not deploy an interpreter. No
+  `PYTHON_VERSION` pin.
+
+### D40: public `eth_getLogs` endpoints move to publicnode (supersedes D15's host)
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-10-27
+- Source: CI on PR #59 — Base HTTP 413, Amoy HTTP 400, both on `eth_getLogs`
+- Detail: The liveness suite asks for the app's `LOG_CHUNK` of 2,000 blocks.
+  On 2026-10-27 `https://sepolia.base.org` answered HTTP 413 / JSON-RPC
+  `-32614` ("eth_getLogs is limited to a 200 range").
+  `https://polygon-amoy.drpc.org` answered HTTP 400 / code 35 ("ranges over
+  10000 blocks are not supported on free plan") for windows of 200, 2,000,
+  and 10,001 blocks alike, so the message is not a real 10k ceiling — the
+  free tier no longer serves this call. D27 says that kind of rejection is
+  a capability loss: replace the endpoint, do not skip it.
+
+  **Chosen:** `https://base-sepolia-rpc.publicnode.com` (chain `0x14a34` =
+  84532) and `https://polygon-amoy-bor-rpc.publicnode.com` (chain `0x13882`
+  = 80002). Both returned HTTP 200 and an array for a 2,000-block
+  `eth_getLogs`. They are now `NETWORKS.rpcUrl` and the first built-in
+  fallback. The old hosts stay later in the fallback list for other methods.
+  `https://base-sepolia.gateway.tenderly.co` and
+  `https://polygon-amoy.gateway.tenderly.co` also accepted the window and
+  were left unused — two new hosts is a wider change than this failure needs.
+
+### D41: refresh dependency overrides to the versions Trivy can install
+- Status: APPROVED
+- Type: new-dependency
+- Date: 2026-10-27
+- Source: Trivy on PR #59 — 11 high/critical findings in `package-lock.json`
+- Detail: The scan failed on packages we already pin or depend on directly.
+  Installed floors are now `@modelcontextprotocol/sdk` **1.32.2**, `zod`
+  **4.6.7**, `express` **5.3.0**, and overrides `fast-uri` **3.1.9**,
+  `body-parser` **2.4.0**, `proxy-addr` **2.0.8**, `brace-expansion`
+  **5.0.12**, `hono` **4.13.14**, `ip-address` **10.7.5**, `source-map-js`
+  **1.2.2**, `undici` **7.30.1**. The D25 pin of `@hono/node-server` at
+  **2.1.0** stays; only the `hono` package override moved, still inside the
+  SDK's `^4` range. `npm audit` after this is one high (`vite` 8.1.5, dev
+  server / Windows `launch-editor`) and three moderate (`vitest` 4.1.10).
+  Vite 8.3.5 clears that high, and `npm install` of it crashes npm 10.9.8's
+  arborist (`edgesOut` on an optional Vitest peer), so it is not in this
+  change. Trivy did not report Vite.
 
