@@ -22,7 +22,8 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     id: 'base-sepolia',
     name: 'Base Sepolia',
     chainId: 84532,
-    rpcUrl: 'https://sepolia.base.org',
+    // sepolia.base.org now rejects eth_getLogs wider than 200 blocks (D40).
+    rpcUrl: 'https://base-sepolia-rpc.publicnode.com',
     explorerName: 'Basescan',
     explorerUrl: 'https://sepolia.basescan.org',
     nativeSymbol: 'ETH',
@@ -50,10 +51,10 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     id: 'polygon-amoy',
     name: 'Polygon Amoy',
     chainId: 80002,
-    // polygon.technology Amoy RPC no longer resolves; dRPC verified for getLogs@2000.
+    // dRPC free tier no longer serves a 2000-block eth_getLogs (D40).
     rpcUrl:
       getEnv('VITE_POLYGON_AMOY_RPC_URL', 'POLYGON_AMOY_RPC_URL') ??
-      'https://polygon-amoy.drpc.org',
+      'https://polygon-amoy-bor-rpc.publicnode.com',
     explorerName: 'Polygonscan',
     explorerUrl: 'https://amoy.polygonscan.com',
     nativeSymbol: 'POL',

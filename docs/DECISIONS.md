@@ -26,7 +26,7 @@ settlementos [`tasks/fortel2-decisions-log-template.md`](https://github.com/Step
 - Detail: <2–5 lines: what, why, smallest viable alternative>
 ```
 
-**Next free identifier: `D40`.** `D39` is the Render Node 26.12.1 pin. `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
+**Next free identifier: `D42`.** `D41` refreshes the dependency overrides that Trivy flagged. `D40` moves the public getLogs endpoints to publicnode. `D39` is the Render Node 26.12.1 pin. `D33` and `D34` are **pre-assigned to `F6u`** (URL contract —
 required; internal-vs-external tx link precedence — optional) in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md); do not take either for other work.
 `D20`, `D21`, `D23`, `D24`, `D25`, `D26`, `D27`, `D30`, `D31` and `D32` are below.
@@ -39,7 +39,7 @@ written, and the planner skipped it. `D29` was pre-assigned to F6s for a "what c
 failure" fork and correctly declined — F6s used the approach its dispatch specified. Burned rather
 than recycled, as `F6e` was. Five retirements is the pre-assignment rule working, not waste —
 an optional identifier costs one line in a dispatch and removes the chance of two parallel
-workers claiming the same number. Take `D40` only from the plan, never by reading for the
+workers claiming the same number. Take `D42` only from the plan, never by reading for the
 highest number here.
 
 ---
@@ -288,7 +288,7 @@ highest number here.
   than it looks.
 
 ### D15: Polygon Amoy's replacement RPC endpoint
-- Status: **APPROVED 2026-08-08** — `https://polygon-amoy.drpc.org` (F6i, #24)
+- Status: **SUPERSEDED by D40** (2026-10-27) — dRPC no longer serves a 2000-block `eth_getLogs`. Was **APPROVED 2026-08-08** — `https://polygon-amoy.drpc.org` (F6i, #24)
 - Type: design-choice
 - Date: 2026-08-08
 - Source: F6i / issue #17
@@ -1059,4 +1059,45 @@ highest number here.
   repo is the Semgrep job in `.github/workflows/security-scans.yml`, which
   asks Actions for `3.x` and does not deploy an interpreter. No
   `PYTHON_VERSION` pin.
+
+### D40: public `eth_getLogs` endpoints move to publicnode (supersedes D15's host)
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-10-27
+- Source: CI on PR #59 — Base HTTP 413, Amoy HTTP 400, both on `eth_getLogs`
+- Detail: The liveness suite asks for the app's `LOG_CHUNK` of 2,000 blocks.
+  On 2026-10-27 `https://sepolia.base.org` answered HTTP 413 / JSON-RPC
+  `-32614` ("eth_getLogs is limited to a 200 range").
+  `https://polygon-amoy.drpc.org` answered HTTP 400 / code 35 ("ranges over
+  10000 blocks are not supported on free plan") for windows of 200, 2,000,
+  and 10,001 blocks alike, so the message is not a real 10k ceiling — the
+  free tier no longer serves this call. D27 says that kind of rejection is
+  a capability loss: replace the endpoint, do not skip it.
+
+  **Chosen:** `https://base-sepolia-rpc.publicnode.com` (chain `0x14a34` =
+  84532) and `https://polygon-amoy-bor-rpc.publicnode.com` (chain `0x13882`
+  = 80002). Both returned HTTP 200 and an array for a 2,000-block
+  `eth_getLogs`. They are now `NETWORKS.rpcUrl` and the first built-in
+  fallback. The old hosts stay later in the fallback list for other methods.
+  `https://base-sepolia.gateway.tenderly.co` and
+  `https://polygon-amoy.gateway.tenderly.co` also accepted the window and
+  were left unused — two new hosts is a wider change than this failure needs.
+
+### D41: refresh dependency overrides to the versions Trivy can install
+- Status: APPROVED
+- Type: new-dependency
+- Date: 2026-10-27
+- Source: Trivy on PR #59 — 11 high/critical findings in `package-lock.json`
+- Detail: The scan failed on packages we already pin or depend on directly.
+  Installed floors are now `@modelcontextprotocol/sdk` **1.32.2**, `zod`
+  **4.6.7**, `express` **5.3.0**, and overrides `fast-uri` **3.1.9**,
+  `body-parser` **2.4.0**, `proxy-addr` **2.0.8**, `brace-expansion`
+  **5.0.12**, `hono` **4.13.14**, `ip-address` **10.7.5**, `source-map-js`
+  **1.2.2**, `undici` **7.30.1**. The D25 pin of `@hono/node-server` at
+  **2.1.0** stays; only the `hono` package override moved, still inside the
+  SDK's `^4` range. `npm audit` after this is one high (`vite` 8.1.5, dev
+  server / Windows `launch-editor`) and three moderate (`vitest` 4.1.10).
+  Vite 8.3.5 clears that high, and `npm install` of it crashes npm 10.9.8's
+  arborist (`edgesOut` on an optional Vitest peer), so it is not in this
+  change. Trivy did not report Vite.
 
