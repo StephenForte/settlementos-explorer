@@ -23,7 +23,7 @@ import {
   requireMcpAuth,
   type McpAuthConfig,
 } from './auth.ts'
-import { MCP_OAUTH_SCOPES } from './oauth-provider.ts'
+import { MCP_OAUTH_SCOPES, type McpClientsStore } from './oauth-provider.ts'
 import { createRateLimiter } from './rate-limit.ts'
 import { createExplorerMcpServer } from './server.ts'
 
@@ -62,19 +62,22 @@ export function mountMcpRoutes(
 
     app.use(['/authorize', '/token', '/register', '/revoke'], oauthRateLimit)
 
-    // ChatGPT may send a per-app callback
-    // (https://chatgpt.com/connector/oauth/{id}). The SDK requires exact
-    // registration — remember allowed ChatGPT callbacks before /authorize runs.
+    // ChatGPT per-app callbacks need exact SDK registration. Only cache them
+    // after the static client and authorization/PKCE parameters are validated;
+    // the store independently bounds entry count, URI length, and lifetime.
     app.use('/authorize', (req, _res, next) => {
-      const store = oauthProvider.clientsStore as {
-        rememberAllowedRedirectUri?: (uri: string | undefined) => void
-      }
-      if (typeof store.rememberAllowedRedirectUri === 'function') {
-        const redirectUri =
-          typeof req.query.redirect_uri === 'string'
-            ? req.query.redirect_uri
-            : undefined
-        store.rememberAllowedRedirectUri(redirectUri)
+      const params = req.query
+      if (
+        req.method === 'GET' &&
+        params.client_id === mcpAuth.oauthClientId &&
+        params.response_type === 'code' &&
+        params.code_challenge_method === 'S256' &&
+        typeof params.code_challenge === 'string' &&
+        /^[A-Za-z0-9_-]{43}$/.test(params.code_challenge) &&
+        typeof params.redirect_uri === 'string'
+      ) {
+        const store = oauthProvider.clientsStore as McpClientsStore
+        store.rememberAllowedRedirectUri?.(params.client_id, params.redirect_uri)
       }
       next()
     })

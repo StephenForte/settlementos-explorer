@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AUTH_CODE_TTL_MS,
+  CHATGPT_REDIRECT_CACHE_MAX_ENTRIES,
+  CHATGPT_REDIRECT_CACHE_TTL_MS,
+  CHATGPT_REDIRECT_URI_MAX_LENGTH,
+  MCP_OAUTH_FIXED_REDIRECT_URIS,
   CHATGPT_MCP_REDIRECT_URIS,
   CLAUDE_MCP_REDIRECT_URI,
   createMcpOAuthProvider,
@@ -38,6 +42,59 @@ describe('ChatGPT connector redirect URIs', () => {
     ).toBe(false)
   })
 
+  it('bounds callback storage and expires entries, including refreshed callbacks', async () => {
+    let now = 1000
+    const store = createStaticClientsStore({
+      clientId: 'static-id',
+      clientSecret: 'static-secret-16+',
+      now: () => now,
+    })
+    const uri = (i: number) => `https://chatgpt.com/connector/oauth/cb_${i}`
+    const redirects = async () =>
+      (await store.getClient('static-id'))!.redirect_uris
+    for (let i = 0; i <= CHATGPT_REDIRECT_CACHE_MAX_ENTRIES; i++) {
+      store.rememberAllowedRedirectUri?.('static-id', uri(i))
+    }
+    expect(await redirects()).toHaveLength(
+      MCP_OAUTH_FIXED_REDIRECT_URIS.length + CHATGPT_REDIRECT_CACHE_MAX_ENTRIES,
+    )
+    expect(await redirects()).not.toContain(uri(0))
+    expect(await redirects()).toContain(uri(CHATGPT_REDIRECT_CACHE_MAX_ENTRIES))
+    now += CHATGPT_REDIRECT_CACHE_TTL_MS - 1
+    store.rememberAllowedRedirectUri?.('static-id', uri(1))
+    now += 1
+    expect(await redirects()).toEqual([...MCP_OAUTH_FIXED_REDIRECT_URIS, uri(1)])
+    now += CHATGPT_REDIRECT_CACHE_TTL_MS
+    expect(await redirects()).toEqual(MCP_OAUTH_FIXED_REDIRECT_URIS)
+    // Expiration is also applied on insertion, without a preceding lookup.
+    store.rememberAllowedRedirectUri?.('static-id', uri(2))
+    now += CHATGPT_REDIRECT_CACHE_TTL_MS
+    store.rememberAllowedRedirectUri?.('static-id', uri(3))
+    expect(await redirects()).toEqual([...MCP_OAUTH_FIXED_REDIRECT_URIS, uri(3)])
+  })
+
+  it('does not cache callbacks for another client, disallowed hosts, or oversized URIs', async () => {
+    const store = createStaticClientsStore({
+      clientId: 'static-id',
+      clientSecret: 'static-secret-16+',
+    })
+    store.rememberAllowedRedirectUri?.(
+      'unknown-client',
+      'https://chatgpt.com/connector/oauth/cb_1',
+    )
+    store.rememberAllowedRedirectUri?.(
+      'static-id',
+      'https://evil.example/connector/oauth/cb_1',
+    )
+    store.rememberAllowedRedirectUri?.(
+      'static-id',
+      `https://chatgpt.com/connector/oauth/${'a'.repeat(CHATGPT_REDIRECT_URI_MAX_LENGTH)}`,
+    )
+    expect((await store.getClient('static-id'))!.redirect_uris).toEqual(
+      MCP_OAUTH_FIXED_REDIRECT_URIS,
+    )
+  })
+
   it('remembers per-connector callbacks on the static client', async () => {
     const store = createStaticClientsStore({
       clientId: 'static-id',
@@ -45,7 +102,7 @@ describe('ChatGPT connector redirect URIs', () => {
     })
     const connectorUri =
       'https://chatgpt.com/connector/oauth/cb_test_connector_1'
-    store.rememberAllowedRedirectUri?.(connectorUri)
+    store.rememberAllowedRedirectUri?.('static-id', connectorUri)
     const client = await store.getClient('static-id')
     expect(client?.redirect_uris).toContain(connectorUri)
     expect(client?.redirect_uris).toContain(CHATGPT_MCP_REDIRECT_URIS[0])

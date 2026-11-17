@@ -73,6 +73,11 @@ const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000
 /** Authorization codes are single-use and short-lived. */
 export const AUTH_CODE_TTL_MS = 5 * 60 * 1000
 
+/** Bound both entry count and retained string size for unauthenticated callbacks. */
+export const CHATGPT_REDIRECT_CACHE_MAX_ENTRIES = 128
+export const CHATGPT_REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000
+export const CHATGPT_REDIRECT_URI_MAX_LENGTH = 2048
+
 const CHATGPT_CONNECTOR_OAUTH_HOSTS = new Set([
   'chatgpt.com',
   'chat.openai.com',
@@ -85,6 +90,7 @@ const CHATGPT_CONNECTOR_OAUTH_HOSTS = new Set([
 export function isChatGptConnectorOauthRedirectUri(
   redirectUri: string,
 ): boolean {
+  if (redirectUri.length > CHATGPT_REDIRECT_URI_MAX_LENGTH) return false
   let url: URL
   try {
     url = new URL(redirectUri)
@@ -106,17 +112,26 @@ export function isAllowedDcrRedirectUri(uri: string): boolean {
 }
 
 export type McpClientsStore = OAuthRegisteredClientsStore & {
-  /** Remember a ChatGPT per-connector callback for this process (exact match). */
-  rememberAllowedRedirectUri?: (redirectUri: string | undefined) => void
+  /** Cache a validated static client's ChatGPT callback for a bounded time. */
+  rememberAllowedRedirectUri?: (clientId: string, redirectUri: string) => void
 }
 
 export function createStaticClientsStore(opts: {
   clientId: string
   clientSecret: string
   allowDynamicRegistration?: boolean
+  /** Injectable clock for tests. */
+  now?: () => number
 }): McpClientsStore {
   const clients = new Map<string, OAuthClientInformationFull>()
-  const dynamicRedirectUris = new Set<string>()
+  const dynamicRedirectUris = new Map<string, number>()
+  const now = opts.now ?? Date.now
+  function purgeExpiredRedirectUris() {
+    const time = now()
+    for (const [uri, expiresAt] of dynamicRedirectUris) {
+      if (expiresAt <= time) dynamicRedirectUris.delete(uri)
+    }
+  }
   const allowDynamicRegistration = opts.allowDynamicRegistration === true
 
   const staticClientBase: OAuthClientInformationFull = {
@@ -137,23 +152,34 @@ export function createStaticClientsStore(opts: {
       const client = clients.get(clientId)
       if (!client) return undefined
       if (clientId === staticClientBase.client_id) {
+        purgeExpiredRedirectUris()
         return {
           ...client,
           redirect_uris: [
             ...MCP_OAUTH_FIXED_REDIRECT_URIS,
-            ...dynamicRedirectUris,
+            ...dynamicRedirectUris.keys(),
           ],
         }
       }
       return { ...client }
     },
-    rememberAllowedRedirectUri(redirectUri) {
+    rememberAllowedRedirectUri(clientId, redirectUri) {
       if (
-        typeof redirectUri === 'string' &&
-        isChatGptConnectorOauthRedirectUri(redirectUri)
+        clientId !== opts.clientId ||
+        !isChatGptConnectorOauthRedirectUri(redirectUri)
       ) {
-        dynamicRedirectUris.add(redirectUri)
+        return
       }
+      purgeExpiredRedirectUris()
+      // Refresh an existing entry without letting repeat requests evict others.
+      if (
+        !dynamicRedirectUris.has(redirectUri) &&
+        dynamicRedirectUris.size >= CHATGPT_REDIRECT_CACHE_MAX_ENTRIES
+      ) {
+        const oldest = dynamicRedirectUris.keys().next().value
+        if (oldest !== undefined) dynamicRedirectUris.delete(oldest)
+      }
+      dynamicRedirectUris.set(redirectUri, now() + CHATGPT_REDIRECT_CACHE_TTL_MS)
     },
   }
 

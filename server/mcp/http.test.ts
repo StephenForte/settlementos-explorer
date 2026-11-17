@@ -4,6 +4,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.ts'
+import express from 'express'
+import { resolveMcpAuth } from './auth.ts'
+import { mountMcpRoutes } from './http.ts'
+import { createMcpOAuthProvider, MCP_OAUTH_FIXED_REDIRECT_URIS } from './oauth-provider.ts'
 
 const MCP_KEY = 'test-mcp-api-key-32chars!!'
 const OAUTH_CLIENT_ID = '11111111-1111-4111-8111-111111111111'
@@ -22,7 +26,7 @@ afterEach(async () => {
 })
 
 async function listen(
-  app: ReturnType<typeof createApp>,
+  app: express.Express,
   port?: number,
 ): Promise<{ baseUrl: string; port: number }> {
   const server = app.listen(port ?? 0, '127.0.0.1')
@@ -406,6 +410,63 @@ describe('/mcp OAuth', () => {
     expect(dcrTokenRes.status).toBe(200)
     const dcrTokens = (await dcrTokenRes.json()) as { access_token: string }
     expect(dcrTokens.access_token).toBeTruthy()
+  })
+
+  it('does not persist callbacks from invalid authorize requests', async () => {
+    const provider = createMcpOAuthProvider({
+      clientId: OAUTH_CLIENT_ID,
+      clientSecret: OAUTH_CLIENT_SECRET,
+    })
+    const app = express()
+    mountMcpRoutes(app, {
+      mcpAuth: resolveMcpAuth({
+        apiKey: MCP_KEY,
+        oauthClientId: OAUTH_CLIENT_ID,
+        oauthClientSecret: OAUTH_CLIENT_SECRET,
+        publicUrl: 'http://127.0.0.1',
+      }),
+      oauthProvider: provider,
+    })
+    const { baseUrl } = await listen(app)
+    const validParams = {
+      client_id: OAUTH_CLIENT_ID,
+      response_type: 'code',
+      code_challenge: makePkce().challenge,
+      code_challenge_method: 'S256',
+    }
+    const invalidParams: Record<string, string>[] = [
+      {},
+      { ...validParams, client_id: 'unknown-client' },
+      {
+        client_id: OAUTH_CLIENT_ID,
+        response_type: 'code',
+        code_challenge_method: 'S256',
+      },
+      { ...validParams, code_challenge_method: 'plain' },
+      { ...validParams, response_type: 'token' },
+    ]
+    for (const [i, params] of invalidParams.entries()) {
+      const query = new URLSearchParams({
+        ...params,
+        redirect_uri: `https://chatgpt.com/connector/oauth/planted_${i}`,
+      })
+      const res = await fetch(`${baseUrl}/authorize?${query}`, {
+        redirect: 'manual',
+      })
+      expect(res.status).toBe(400)
+      expect(
+        (await provider.clientsStore.getClient(OAUTH_CLIENT_ID))!.redirect_uris,
+      ).toEqual(MCP_OAUTH_FIXED_REDIRECT_URIS)
+    }
+    const query = new URLSearchParams({
+      ...validParams,
+      redirect_uri: 'https://chatgpt.com/connector/oauth/valid_callback',
+    })
+    const res = await fetch(`${baseUrl}/authorize?${query}`, {
+      redirect: 'manual',
+    })
+    expect(res.status).toBe(302)
+    expect(new URL(res.headers.get('location')!).searchParams.get('code')).toBeTruthy()
   })
 
   it('accepts ChatGPT platform + per-connector redirect URIs', async () => {
