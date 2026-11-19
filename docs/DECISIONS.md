@@ -97,7 +97,7 @@ highest number here.
   chips as a bug.
 
 ### D5: Dark mode is invented, not specified
-- Status: APPROVED
+- Status: SUPERSEDED by D47 (2026-11-19) — F6z retuned the palette; the values below no longer ship
 - Type: design-choice
 - Date: 2026-08-07
 - Source: F6b, PR #6
@@ -118,7 +118,7 @@ highest number here.
   `RoleBadge.test.tsx`.
 
 ### D7: `--mute` darkened to `#66685d` for WCAG AA
-- Status: APPROVED
+- Status: SUPERSEDED by D47 (2026-11-19) — F6z retuned the palette; the values below no longer ship
 - Type: design-choice
 - Date: 2026-08-07
 - Source: review of F6b; PR #7
@@ -1172,3 +1172,29 @@ highest number here.
   `(nonce, balance)` state rather than scanning blocks. Known blind spot of
   bisection, to be disclosed on the page: incoming **zero-value** txs change no
   state and cannot be found without an indexer.
+
+### D47: receipt palette and theme toggle replace D5 and D7
+- Status: APPROVED (mechanism). Palette subject to operator sign-off on PR #62.
+- Type: design-choice
+- Date: 2026-11-19
+- Source: F6z, PR #62 (`40f1406`), planner review
+- Detail: F6z retuned every token in `src/index.css` toward D42's reference:
+  neutral canvas (`#f6f5f2` light, `#111111` dark) and a single green accent
+  (`--primary #146c36`, the same in both themes). This retires D5's yellow CTA
+  and inverted-cream dark palette, and D7's `--mute #66685d`. The new `--mute`
+  is `#5c5b56` light (6.24 on canvas, 5.81 on surface-soft) and `#b4b3ab` dark
+  (8.97 / 7.37). Planner recomputed every value from the stylesheet: lowest
+  text pair is accent-purple on its tint, 4.78 light / 4.67 dark. All AA-normal,
+  with no large-text exemption. `contrast.test.ts` pins the pairs.
+
+  Theme: system / light / dark. The choice is stored in localStorage key
+  `sos-explorer-theme` (absent = system) and applied as `data-theme` on `<html>`.
+  The `prefers-color-scheme` block and the explicit `[data-theme="dark"]` block
+  carry identical values (planner diffed them: zero drift). Any change to one
+  must change the other.
+
+  `index.html` carries a 10-line blocking script that sets `data-theme` before
+  first paint, which is the only way to avoid a flash of the wrong theme. It
+  accepts only the literal values `light` and `dark`. The app sends no
+  Content-Security-Policy today. If one is ever added, this script needs a hash
+  or nonce, or the toggle will flash.
