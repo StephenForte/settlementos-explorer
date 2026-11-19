@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { AddressDetailPage } from './pages/AddressDetailPage'
@@ -9,6 +10,14 @@ import {
   TransactionAliasPage,
   TransactionPage,
 } from './pages/TransactionPage'
+
+// Vite replaces import.meta.env.DEV at build time, so this route and its
+// chunk are absent from production. Harmless if a dev server is what renders it.
+const UiDemo = import.meta.env.DEV
+  ? lazy(() =>
+      import('./components/ui/UiDemo').then((module) => ({ default: module.UiDemo })),
+    )
+  : null
 
 export default function App() {
   return (
@@ -25,6 +34,16 @@ export default function App() {
           path="/:networkId/block/:blockNumberOrHash"
           element={<BlockPage />}
         />
+        {UiDemo ? (
+          <Route
+            path="/dev/ui"
+            element={
+              <Suspense fallback={null}>
+                <UiDemo />
+              </Suspense>
+            }
+          />
+        ) : null}
         <Route path="*" element={<Navigate to="/base-sepolia" replace />} />
       </Route>
     </Routes>
