@@ -5,35 +5,39 @@ description: |
   A playful developer-tools system rendered on a warm cream canvas with hand-drawn hedgehog mascots dotted across every page like marginalia in a sketchbook. The chrome reads like a friendly engineering blog: olive-gray ink (#4d4f46) for body, deep olive-charcoal (#23251d) for headlines, IBM Plex Sans Variable typography in tight 1.43-line-height paragraphs, and a single saturated yellow-orange CTA pill (#f7a501) carrying every primary action. The system actively rejects the genre's typical somber dark-tech aesthetic in favor of a creamy, textbook-illustration sensibility — bordered cards stack on the cream canvas with 4–6px radii, doc sidebars use rounded outline-icon mini-illustrations, and the home page leans on cartoon characters (hedgehogs in lab coats, hedgehogs at terminals, hedgehogs in lounge chairs) as its signature decoration. Code samples and product analytics charts live inside white-on-cream cards with thin olive borders; the contrast between the playful illustration and the data-dense product imagery is the brand's signature voice.
 
 colors:
-  primary: "#f7a501"
-  primary-pressed: "#dd9001"
-  primary-active: "#b17816"
-  on-primary: "#23251d"
-  ink: "#23251d"
-  body: "#4d4f46"
-  charcoal: "#33342d"
-  mute: "#6c6e63"
+  primary: "#146c36"
+  primary-pressed: "#105a2d"
+  primary-active: "#0c4824"
+  on-primary: "#ffffff"
+  ink: "#1c1c1a"
+  body: "#3e3e3a"
+  charcoal: "#2c2c28"
+  mute: "#5c5b56"
   ash: "#9b9c92"
-  stone: "#b6b7af"
-  hairline: "#bfc1b7"
-  hairline-soft: "#dcdfd2"
-  on-dark: "#ffffff"
-  canvas: "#eeefe9"
-  surface-soft: "#e5e7e0"
+  stone: "#8d8c86"
+  hairline: "#ddd9d0"
+  hairline-soft: "#e8e6df"
+  on-dark: "#f6f5f2"
+  canvas: "#f6f5f2"
+  surface-soft: "#eeede8"
   surface-card: "#ffffff"
-  surface-doc: "#fcfcfa"
-  surface-dark: "#23251d"
+  surface-doc: "#fbfbfa"
+  surface-dark: "#161616"
   link-blue: "#1d4ed8"
-  link-teal: "#1078a3"
-  accent-blue: "#2c84e0"
-  accent-blue-soft: "#dceaf6"
-  accent-red: "#cd4239"
-  accent-red-soft: "#f7d6d3"
-  accent-green: "#2c8c66"
-  accent-green-soft: "#d9eddf"
+  link-teal: "#0f5f86"
+  accent-blue: "#1d4ed8"
+  accent-blue-soft: "#e7f1fb"
+  accent-red: "#9d1c1c"
+  accent-red-soft: "#fdecec"
+  accent-green: "#146c36"
+  accent-green-soft: "#e5f6ec"
   accent-purple: "#7c44a6"
   accent-purple-soft: "#e7d8ee"
-  focus-ring: "rgba(59,130,246,0.5)"
+  focus-ring: "#146c36"
+  warn: "#7a4f08"
+  warn-bg: "#fbf3dc"
+  error: "#9d1c1c"
+  error-bg: "#fdecec"
 
 typography:
   display-xl:
@@ -166,6 +170,7 @@ rounded:
   sm: 4px
   md: 6px
   lg: 8px
+  card: 12px
   full: 9999px
 
 spacing:
@@ -353,6 +358,210 @@ components:
     textColor: "{colors.link-teal}"
     typography: "{typography.link-md}"
 ---
+
+## Receipt foundation (F6z)
+
+This section is the applied product system. Wave 2 page tasks (F6aa, F6ab, F6ac) build on it and do not edit `src/index.css`. The PostHog narrative under Overview is the earlier marketing capture. When a hex down there disagrees with this section, `src/index.css` and the tables below win.
+
+### What a page may style
+
+Page CSS lives in `src/styles/<page>.css`, imported by that page. It may use `var(--*)` only. It must not add a hex, an `rgb()` / `rgba()`, or a custom property that stores a colour. Spacing uses the existing scale and no other step. Token names stay `--kebab-case` as listed here. Do not invent a parallel ramp.
+
+Shared class names and the components in `src/components/ui/` are the primitives. A page that needs a new colour or a new spacing step is missing vocabulary, not a reason to edit `src/index.css` from that task.
+
+### Theme
+
+`prefers-color-scheme` is the default. If `<html>` has no `data-theme`, the dark media query in `src/index.css` is what paints, including for someone who never touches the toggle. Choosing System removes the attribute and the storage key, which returns to that default.
+
+Light and dark set `data-theme="light"` or `data-theme="dark"` on `<html>`. The choice is stored as `sos-explorer-theme` in `localStorage`, inside try/catch. A storage failure still applies the attribute for the current view.
+
+`index.html` runs a blocking script in `<head>`, before the module bundle, that reads the same key and sets `data-theme` when the stored value is `light` or `dark`. That is what keeps the first paint from using the opposite theme. Leave the script ahead of the stylesheet and the module.
+
+### Palette
+
+Light canvas is neutral off-white (`--canvas`, `#f6f5f2`). Dark canvas is `#111111`. Cards are `--surface-card` with a 1px `--hairline`, `--radius-card` (12px), and `--shadow-card`.
+
+The filled accent is one green. `--primary`, `--primary-pressed`, and `--primary-active` are `#146c36`, `#105a2d`, and `#0c4824` in both themes. The button label is `--on-primary` (`#ffffff`).
+
+Status ink sits on a tint: `--success-*`, `--pending-*`, `--danger-*`. Those are aliases of `--accent-green`, `--warn`, and `--error`. In light, success ink is the same hex as `--primary`. In dark, `--accent-green` is `#8fd9ad` so pill text and positive ledger amounts stay AA on the near-black tint. Do not paint dark-mode status text with `--primary`; that green is the button fill.
+
+`--stone` is not a text colour. `--ash` is not in the stylesheet.
+
+Role-badge pairs are the previous hues, remeasured on the same hexes. Do not retint them in a page file.
+
+### Spacing, type, and layout
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--space-xxs` … `--space-section` | 2, 4, 8, 12, 16, 24, 32, 80px | The only spacing scale |
+| `--radius-card` | 12px | Receipt cards, panels, tables, banners |
+| `--radius-md` | 6px | Controls that are not cards |
+| `--radius-full` | pill | Status pills, theme toggle, network switcher |
+| `--shadow-card` | soft shadow | Cards. Dark theme uses a heavier shadow |
+| `--font-sans` | IBM Plex Sans | UI text |
+| `--font-mono` | IBM Plex Mono | Hashes, amounts, raw numbers. Class `.mono` |
+| `--text-amount` | 32px | `AmountDisplay` figure |
+| `--text-unit` | 14px | Unit beside the figure |
+| `--text-title` | 20px | Receipt title |
+| `--text-secondary` | 13px | Sub-lines, breadcrumbs, ledger sub-lines |
+| `--text-caption` | 12px | Pill label, captions |
+| `--page-main` | 620px | Receipt column max |
+| `--page-side` | 300px | Details column max |
+| `--page-stack` | 900px | `PageSplit` becomes one column. The media query is written as `900px` because a custom property is not reliable inside `@media` |
+
+### Primitives
+
+Import from `src/components/ui/`. Styles are global from `src/index.css`.
+
+| Component | What it is |
+| --- | --- |
+| `PageSplit` | `.page-split` with `.page-split-main` and `.page-split-side`. Two columns until 900px, then one. Children are `minmax(0, …)` so a 375px viewport does not scroll sideways. |
+| `ReceiptCard` | `.receipt-card`. Optional status, title, `.finality-note`, actions. `tone="failed"` adds `.receipt-card-failed` (danger border, content stays). |
+| `StatusPill` | `.status-pill-success`, `-pending`, `-failed`. Small caps, tinted fill, 1px border. |
+| `AmountDisplay` | `.amount-value` at 32px mono, `.amount-unit`, optional `.amount-sub`. Pair two of them with `.amount-pair`. |
+| `LedgerList` | `.ledger` rows: label, optional sub-line, signed mono amount. Callers pass `value` and `expectedTotal` as bigint base units (wei or token minor units). The total row shows the sum of `value`. If that sum is not `expectedTotal`, a `role="alert"` `.ledger-mismatch` shows both figures. The component does not replace the sum with the expected total. |
+| `DetailsPanel` | Collapsible `.details-panel`. Rows are label, value, optional sub-line. Button exposes `aria-expanded`. |
+| `Breadcrumbs` | `.breadcrumbs`. Last crumb is `aria-current="page"`. |
+| `TermTooltip` | Dotted underline on a `<button class="term-trigger">`, so it is keyboard-focusable. The tooltip is the `aria-describedby` target and shows on hover and focus. |
+| `ThemeToggle` | Header control. System / Light / Dark. |
+
+Copy link stays the existing `CopyButton` / `.btn-ghost`. There is no price, wallet, ad, or share primitive.
+
+### Contrast
+
+Measured from the hex in `src/index.css` with the WCAG 2.x relative-luminance ratio `(L1+0.05)/(L2+0.05)`. Text floors at 4.5:1, including 12–13px secondary text and 14px button labels. No large-text exemption is used. The focus ring is a non-text indicator and floors at 3:1. Hairlines are decorative borders and are not in this table. `src/components/ui/contrast.test.ts` recomputes the same pairs and fails under the floor. Both dark blocks in the stylesheet are asserted equal.
+
+Amounts are 32px, which would qualify as large text, and they use `--ink`, which clears 4.5:1 on the card anyway.
+
+`--mute` moved from `#66685d` (measured for the old cream canvas) to `#5c5b56` because the canvas is now neutral. The new ratios are in the tables.
+
+#### Light
+
+| Pair | Foreground | Background | Ratio | Floor |
+| --- | --- | --- | ---: | --- |
+| Text on page (`--ink` on `--canvas`) | `#1c1c1a` | `#f6f5f2` | 15.65 | 4.5:1 |
+| Text on card (`--ink` on `--surface-card`) | `#1c1c1a` | `#ffffff` | 17.07 | 4.5:1 |
+| Text on soft surface (`--ink` on `--surface-soft`) | `#1c1c1a` | `#eeede8` | 14.56 | 4.5:1 |
+| Text on doc surface (`--ink` on `--surface-doc`) | `#1c1c1a` | `#fbfbfa` | 16.48 | 4.5:1 |
+| Body on page (`--body` on `--canvas`) | `#3e3e3a` | `#f6f5f2` | 9.85 | 4.5:1 |
+| Body on card (`--body` on `--surface-card`) | `#3e3e3a` | `#ffffff` | 10.74 | 4.5:1 |
+| Body on soft surface (`--body` on `--surface-soft`) | `#3e3e3a` | `#eeede8` | 9.16 | 4.5:1 |
+| Body on info banner (`--body` on `--info-bg`) | `#3e3e3a` | `#e7f1fb` | 9.40 | 4.5:1 |
+| Body on success tint (`--body` on `--success-bg`) | `#3e3e3a` | `#e5f6ec` | 9.58 | 4.5:1 |
+| Secondary text on page (`--mute` on `--canvas`) | `#5c5b56` | `#f6f5f2` | 6.24 | 4.5:1 |
+| Secondary text on card (`--mute` on `--surface-card`) | `#5c5b56` | `#ffffff` | 6.81 | 4.5:1 |
+| Secondary text on soft surface, including table headers (`--mute` on `--surface-soft`) | `#5c5b56` | `#eeede8` | 5.81 | 4.5:1 |
+| Secondary text on doc surface (`--mute` on `--surface-doc`) | `#5c5b56` | `#fbfbfa` | 6.57 | 4.5:1 |
+| Secondary text on success tint (`--mute` on `--success-bg`) | `#5c5b56` | `#e5f6ec` | 6.07 | 4.5:1 |
+| Primary button label (`--on-primary` on `--primary`) | `#ffffff` | `#146c36` | 6.51 | 4.5:1 |
+| Primary button, pressed (`--on-primary` on `--primary-pressed`) | `#ffffff` | `#105a2d` | 8.33 | 4.5:1 |
+| Primary button, active (`--on-primary` on `--primary-active`) | `#ffffff` | `#0c4824` | 10.67 | 4.5:1 |
+| Network and theme pill, selected (`--canvas` on `--ink`) | `#f6f5f2` | `#1c1c1a` | 15.65 | 4.5:1 |
+| Link on page (`--link-teal` on `--canvas`) | `#0f5f86` | `#f6f5f2` | 6.42 | 4.5:1 |
+| Link on card (`--link-teal` on `--surface-card`) | `#0f5f86` | `#ffffff` | 7.00 | 4.5:1 |
+| Link on soft surface (`--link-teal` on `--surface-soft`) | `#0f5f86` | `#eeede8` | 5.97 | 4.5:1 |
+| Link on warning tint (`--link-teal` on `--warn-bg`) | `#0f5f86` | `#fbf3dc` | 6.32 | 4.5:1 |
+| Link on danger tint (`--link-teal` on `--error-bg`) | `#0f5f86` | `#fdecec` | 6.13 | 4.5:1 |
+| Link on info tint (`--link-teal` on `--info-bg`) | `#0f5f86` | `#e7f1fb` | 6.12 | 4.5:1 |
+| Link on success tint (`--link-teal` on `--success-bg`) | `#0f5f86` | `#e5f6ec` | 6.24 | 4.5:1 |
+| Link blue on page (`--link-blue` on `--canvas`) | `#1d4ed8` | `#f6f5f2` | 6.15 | 4.5:1 |
+| Link blue on card (`--link-blue` on `--surface-card`) | `#1d4ed8` | `#ffffff` | 6.70 | 4.5:1 |
+| Success pill (`--success-ink` on `--success-bg`) | `#146c36` | `#e5f6ec` | 5.80 | 4.5:1 |
+| Positive ledger amount on card (`--success-ink` on `--surface-card`) | `#146c36` | `#ffffff` | 6.51 | 4.5:1 |
+| Positive amount on page (`--success-ink` on `--canvas`) | `#146c36` | `#f6f5f2` | 5.97 | 4.5:1 |
+| Pending pill (`--pending-ink` on `--pending-bg`) | `#7a4f08` | `#fbf3dc` | 6.43 | 4.5:1 |
+| Failed pill (`--danger-ink` on `--danger-bg`) | `#9d1c1c` | `#fdecec` | 7.03 | 4.5:1 |
+| Negative ledger amount on card (`--danger-ink` on `--surface-card`) | `#9d1c1c` | `#ffffff` | 8.03 | 4.5:1 |
+| Negative amount on page (`--danger-ink` on `--canvas`) | `#9d1c1c` | `#f6f5f2` | 7.36 | 4.5:1 |
+| Error text on soft surface (`--danger-ink` on `--surface-soft`) | `#9d1c1c` | `#eeede8` | 6.85 | 4.5:1 |
+| Warning banner (`--warn` on `--warn-bg`) | `#7a4f08` | `#fbf3dc` | 6.43 | 4.5:1 |
+| Error banner (`--error` on `--error-bg`) | `#9d1c1c` | `#fdecec` | 7.03 | 4.5:1 |
+| Error text on the RPC form (`--error` on `--surface-soft`) | `#9d1c1c` | `#eeede8` | 6.85 | 4.5:1 |
+| Error text on card (`--error` on `--surface-card`) | `#9d1c1c` | `#ffffff` | 8.03 | 4.5:1 |
+| Error text on page (`--error` on `--canvas`) | `#9d1c1c` | `#f6f5f2` | 7.36 | 4.5:1 |
+| Incoming transfer chip (`--accent-green` on `--accent-green-soft`) | `#146c36` | `#e5f6ec` | 5.80 | 4.5:1 |
+| Outgoing transfer chip (`--accent-red` on `--accent-red-soft`) | `#9d1c1c` | `#fdecec` | 7.03 | 4.5:1 |
+| Escrow transfer chip (`--accent-purple` on `--accent-purple-soft`) | `#7c44a6` | `#e7d8ee` | 4.78 | 4.5:1 |
+| Escrow badge (`--role-escrow-ink` on `--role-escrow-soft`) | `#5a2f7a` | `#e7d8ee` | 7.28 | 4.5:1 |
+| MMF badge (`--role-mmf-ink` on `--role-mmf-soft`) | `#1a5fa8` | `#dceaf6` | 5.28 | 4.5:1 |
+| Token badge (`--role-token-ink` on `--role-token-soft`) | `#0a5a7a` | `#d4eaf2` | 6.11 | 4.5:1 |
+| Operator badge (`--role-operator-ink` on `--role-operator-soft`) | `#153e9e` | `#dceaf6` | 7.74 | 4.5:1 |
+| Treasury badge (`--role-treasury-ink` on `--role-treasury-soft`) | `#7a5410` | `#f5e6c8` | 5.49 | 4.5:1 |
+| Entity badge (`--role-entity-ink` on `--role-entity-soft`) | `#1d6a4a` | `#d9eddf` | 5.33 | 4.5:1 |
+| External badge (`--role-external-ink` on `--role-external-soft`) | `#4d4f46` | `#e5e7e0` | 6.68 | 4.5:1 |
+| Text on the dark code surface (`--on-dark` on `--surface-dark`) | `#f6f5f2` | `#161616` | 16.60 | 4.5:1 |
+
+Focus ring (non-text, floor 3:1):
+
+| Pair | Foreground | Background | Ratio | Floor |
+| --- | --- | --- | ---: | --- |
+| Focus ring on page (`--focus-ring` on `--canvas`) | `#146c36` | `#f6f5f2` | 5.97 | 3:1 |
+| Focus ring on card (`--focus-ring` on `--surface-card`) | `#146c36` | `#ffffff` | 6.51 | 3:1 |
+| Focus ring on soft surface (`--focus-ring` on `--surface-soft`) | `#146c36` | `#eeede8` | 5.55 | 3:1 |
+
+#### Dark
+
+| Pair | Foreground | Background | Ratio | Floor |
+| --- | --- | --- | ---: | --- |
+| Text on page (`--ink` on `--canvas`) | `#f3f3f0` | `#111111` | 16.99 | 4.5:1 |
+| Text on card (`--ink` on `--surface-card`) | `#f3f3f0` | `#1c1c1c` | 15.33 | 4.5:1 |
+| Text on soft surface (`--ink` on `--surface-soft`) | `#f3f3f0` | `#242424` | 13.96 | 4.5:1 |
+| Text on doc surface (`--ink` on `--surface-doc`) | `#f3f3f0` | `#161616` | 16.28 | 4.5:1 |
+| Body on page (`--body` on `--canvas`) | `#d6d6d0` | `#111111` | 12.94 | 4.5:1 |
+| Body on card (`--body` on `--surface-card`) | `#d6d6d0` | `#1c1c1c` | 11.68 | 4.5:1 |
+| Body on soft surface (`--body` on `--surface-soft`) | `#d6d6d0` | `#242424` | 10.64 | 4.5:1 |
+| Body on info banner (`--body` on `--info-bg`) | `#d6d6d0` | `#1a2836` | 10.27 | 4.5:1 |
+| Body on success tint (`--body` on `--success-bg`) | `#d6d6d0` | `#13281c` | 10.67 | 4.5:1 |
+| Secondary text on page (`--mute` on `--canvas`) | `#b4b3ab` | `#111111` | 8.97 | 4.5:1 |
+| Secondary text on card (`--mute` on `--surface-card`) | `#b4b3ab` | `#1c1c1c` | 8.10 | 4.5:1 |
+| Secondary text on soft surface, including table headers (`--mute` on `--surface-soft`) | `#b4b3ab` | `#242424` | 7.37 | 4.5:1 |
+| Secondary text on doc surface (`--mute` on `--surface-doc`) | `#b4b3ab` | `#161616` | 8.60 | 4.5:1 |
+| Secondary text on success tint (`--mute` on `--success-bg`) | `#b4b3ab` | `#13281c` | 7.40 | 4.5:1 |
+| Primary button label (`--on-primary` on `--primary`) | `#ffffff` | `#146c36` | 6.51 | 4.5:1 |
+| Primary button, pressed (`--on-primary` on `--primary-pressed`) | `#ffffff` | `#105a2d` | 8.33 | 4.5:1 |
+| Primary button, active (`--on-primary` on `--primary-active`) | `#ffffff` | `#0c4824` | 10.67 | 4.5:1 |
+| Network and theme pill, selected (`--canvas` on `--ink`) | `#111111` | `#f3f3f0` | 16.99 | 4.5:1 |
+| Link on page (`--link-teal` on `--canvas`) | `#7fd4ef` | `#111111` | 11.30 | 4.5:1 |
+| Link on card (`--link-teal` on `--surface-card`) | `#7fd4ef` | `#1c1c1c` | 10.20 | 4.5:1 |
+| Link on soft surface (`--link-teal` on `--surface-soft`) | `#7fd4ef` | `#242424` | 9.29 | 4.5:1 |
+| Link on warning tint (`--link-teal` on `--warn-bg`) | `#7fd4ef` | `#3a2e14` | 7.95 | 4.5:1 |
+| Link on danger tint (`--link-teal` on `--error-bg`) | `#7fd4ef` | `#3a1d1d` | 9.15 | 4.5:1 |
+| Link on info tint (`--link-teal` on `--info-bg`) | `#7fd4ef` | `#1a2836` | 8.97 | 4.5:1 |
+| Link on success tint (`--link-teal` on `--success-bg`) | `#7fd4ef` | `#13281c` | 9.32 | 4.5:1 |
+| Link blue on page (`--link-blue` on `--canvas`) | `#9ec5ff` | `#111111` | 10.69 | 4.5:1 |
+| Link blue on card (`--link-blue` on `--surface-card`) | `#9ec5ff` | `#1c1c1c` | 9.64 | 4.5:1 |
+| Success pill (`--success-ink` on `--success-bg`) | `#8fd9ad` | `#13281c` | 9.42 | 4.5:1 |
+| Positive ledger amount on card (`--success-ink` on `--surface-card`) | `#8fd9ad` | `#1c1c1c` | 10.30 | 4.5:1 |
+| Positive amount on page (`--success-ink` on `--canvas`) | `#8fd9ad` | `#111111` | 11.42 | 4.5:1 |
+| Pending pill (`--pending-ink` on `--pending-bg`) | `#f0c36a` | `#3a2e14` | 8.05 | 4.5:1 |
+| Failed pill (`--danger-ink` on `--danger-bg`) | `#ffb4ae` | `#3a1d1d` | 9.02 | 4.5:1 |
+| Negative ledger amount on card (`--danger-ink` on `--surface-card`) | `#ffb4ae` | `#1c1c1c` | 10.06 | 4.5:1 |
+| Negative amount on page (`--danger-ink` on `--canvas`) | `#ffb4ae` | `#111111` | 11.14 | 4.5:1 |
+| Error text on soft surface (`--danger-ink` on `--surface-soft`) | `#ffb4ae` | `#242424` | 9.16 | 4.5:1 |
+| Warning banner (`--warn` on `--warn-bg`) | `#f0c36a` | `#3a2e14` | 8.05 | 4.5:1 |
+| Error banner (`--error` on `--error-bg`) | `#ffb4ae` | `#3a1d1d` | 9.02 | 4.5:1 |
+| Error text on the RPC form (`--error` on `--surface-soft`) | `#ffb4ae` | `#242424` | 9.16 | 4.5:1 |
+| Error text on card (`--error` on `--surface-card`) | `#ffb4ae` | `#1c1c1c` | 10.06 | 4.5:1 |
+| Error text on page (`--error` on `--canvas`) | `#ffb4ae` | `#111111` | 11.14 | 4.5:1 |
+| Incoming transfer chip (`--accent-green` on `--accent-green-soft`) | `#8fd9ad` | `#13281c` | 9.42 | 4.5:1 |
+| Outgoing transfer chip (`--accent-red` on `--accent-red-soft`) | `#ffb4ae` | `#3a1d1d` | 9.02 | 4.5:1 |
+| Escrow transfer chip (`--accent-purple` on `--accent-purple-soft`) | `#b07ad4` | `#2e2140` | 4.67 | 4.5:1 |
+| Escrow badge (`--role-escrow-ink` on `--role-escrow-soft`) | `#d4b0e8` | `#2e2140` | 7.94 | 4.5:1 |
+| MMF badge (`--role-mmf-ink` on `--role-mmf-soft`) | `#9accf5` | `#1a3348` | 7.65 | 4.5:1 |
+| Token badge (`--role-token-ink` on `--role-token-soft`) | `#8ad4e8` | `#16333a` | 8.07 | 4.5:1 |
+| Operator badge (`--role-operator-ink` on `--role-operator-soft`) | `#bfdbfe` | `#1a3348` | 9.17 | 4.5:1 |
+| Treasury badge (`--role-treasury-ink` on `--role-treasury-soft`) | `#f5d78a` | `#3a2c12` | 9.66 | 4.5:1 |
+| Entity badge (`--role-entity-ink` on `--role-entity-soft`) | `#7ddea4` | `#1a3328` | 8.30 | 4.5:1 |
+| External badge (`--role-external-ink` on `--role-external-soft`) | `#dcdfd2` | `#2a2b24` | 10.57 | 4.5:1 |
+| Text on the dark code surface (`--on-dark` on `--surface-dark`) | `#f3f3f0` | `#0c0c0c` | 17.60 | 4.5:1 |
+
+Focus ring (non-text, floor 3:1):
+
+| Pair | Foreground | Background | Ratio | Floor |
+| --- | --- | --- | ---: | --- |
+| Focus ring on page (`--focus-ring` on `--canvas`) | `#8fd9ad` | `#111111` | 11.42 | 3:1 |
+| Focus ring on card (`--focus-ring` on `--surface-card`) | `#8fd9ad` | `#1c1c1c` | 10.30 | 3:1 |
+| Focus ring on soft surface (`--focus-ring` on `--surface-soft`) | `#8fd9ad` | `#242424` | 9.39 | 3:1 |
 
 ## Overview
 

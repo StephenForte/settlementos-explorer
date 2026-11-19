@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router'
 import { NETWORKS } from '../config/networks'
 import { useNetworkParam } from '../hooks/useNetworkParam'
+import { ThemeToggle } from './ui/ThemeToggle'
 
 export function AppShell() {
   const { networkId, setNetworkId } = useNetworkParam()
@@ -34,6 +35,7 @@ export function AppShell() {
             </button>
           ))}
         </div>
+        <ThemeToggle />
       </header>
       <main className="main">
         <Outlet />
