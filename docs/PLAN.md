@@ -148,16 +148,16 @@ F6v  ForteL2 block detail page          ✅ merged #51 — D35 retired unused
 F6w  MCP get_transaction tool           ✅ merged #53 — D36 retired unused
 F6x  MCP get_block tool                 ✅ merged #55 — D37 retired unused
 F6y  ForteL2 full-history address view   ✅ merged #61 (`8c54d7d`) — D43; D44 retired unused
-F6z  receipt design foundation          ✅ approved #62 on code; palette awaits operator — D42, D47; D45 retired unused
-F6aa tx receipt page ("confirmation")   ⏸ wave R2, after F6z merges + operator approves look
-F6ab address page redesign              ⏸ wave R2, after F6y and F6z merge
-F6ac block / overview / entity redesign ⏸ wave R2, after F6z merges
+F6z  receipt design foundation          ✅ merged #62 (`603ab35`), palette approved by operator 2026-11-19 — D42, D47; D45 retired unused
+F6aa tx receipt page ("confirmation")   ⏳ wave R2, dispatched 2026-11-19 from `603ab35` (D48 reserved)
+F6ab address page redesign              ⏳ wave R2, dispatched 2026-11-19 from `603ab35` (D49 reserved)
+F6ac block / overview / entity redesign ⏳ wave R2, dispatched 2026-11-19 from `603ab35` (D50 reserved)
 F6ad Semgrep silently passes on a crash  ⏳ dispatched 2026-11-19 from `8c54d7d` (D46 reserved)
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6ae`** (D42: ids after `F6z` continue `F6aa`, `F6ab`, …). `F6y`–`F6ac` are assigned to the 2026-11-19 receipt-redesign wave below.
+**Next free identifier: `F6ae`** · next free decision after reservations: **`D51`** (D46 F6ad, D48 F6aa, D49 F6ab, D50 F6ac reserved; rescan at write time) (D42: ids after `F6z` continue `F6aa`, `F6ab`, …). `F6y`–`F6ac` are assigned to the 2026-11-19 receipt-redesign wave below.
 
 **Receipt-redesign wave (2026-11-19).** Two operator issues: (1) revamp the transaction ("confirmation") page and the other pages to a receipt-first design (D42); (2) the ForteL2 address page shows little or no data — reproduced, root cause is a ~67-minute native / ~28-hour token discovery window (D43). Wave R1 = F6y ∥ F6z (file-disjoint). Wave R2 = F6aa ∥ F6ab ∥ F6ac, each adding CSS only in its own `src/styles/<page>.css`; R2 briefs are written at F6z's review, against the merged foundation, not now. Ownership: F6y owns `src/chain/transfers.ts` (+ test, + new `src/chain/*` helpers) and `AddressDetailPage.tsx` loading/coverage states only; F6z owns `src/index.css`, `src/components/AppShell.tsx`, new `src/components/ui/*`, `docs/DESIGN.md`. F6aa owns `TransactionPage.tsx`; F6ab owns `AddressDetailPage.tsx`, `TransferTable`, `BalanceChips`, `CounterpartySummary`; F6ac owns `BlockPage`, `OverviewPage`, `EntityPage`, `GraphPage` (and must not edit F6ab's components).
 
@@ -459,9 +459,9 @@ scrolled away.
 | F6y — ForteL2 full-history address view | strongest | ✅ approved | any (public read RPC) | PR #61 approved 2026-11-19 — see verification record. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
 | F6z — receipt design foundation | strong | ✅ approved on code | any | PR #62 at `40f1406` reviewed 2026-11-19: merged-with-main gate 261/43, contrast recomputed independently (min 4.78 / 4.67), dark media block and `[data-theme=dark]` diffed with zero drift, prod bundle free of demo code, local Semgrep 0 findings on 24 files. `index.html` boot script was a brief-scope defect, not creep (D47). Waiting on operator palette sign-off |
 | F6ad — Semgrep fails on engine error + scans again | strong | any time, parallel with everything (CI-only) | any | dispatched 2026-11-19 from `8c54d7d`. Strong rather than cheap: the fix must not just flip `--no-suppress-errors` (that turns every PR red while the crash persists), and the proof needs a planted finding plus a deliberate red |
-| F6aa — tx receipt page | strongest | R2, after F6z | ForteL2 host preferred | not dispatched. Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
-| F6ab — address page | strong | R2, after F6y + F6z | any | not dispatched |
-| F6ac — block / overview / entity | strong | R2, after F6z | any | not dispatched. OverviewPage dep-array rule (§2) still binds |
+| F6aa — tx receipt page | strongest | R2, parallel with F6ab/F6ac | any (public read RPC) | dispatched 2026-11-19 from `603ab35`. Trap measured by planner: on ForteL2 the sender's ETH drop = value + L2 fee + **L1 data fee** (tx `0x7ca9800e…`: 2,250,294,037 wei drop; without `l1Fee` 100,597 wei short). Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
+| F6ab — address page | strong | R2, parallel with F6aa/F6ac | any | dispatched 2026-11-19 from `603ab35`; also pins F6y's coverage backstop with mutation-proven tests |
+| F6ac — block / overview / entity | strong | R2, parallel with F6aa/F6ab | any | dispatched 2026-11-19 from `603ab35`. OverviewPage dep-array rule (§2) still binds |
 
 F6u is strongest-tier despite being "just a page": it publishes a **URL contract that
 SettlementOS will hardcode** (§4 of the PRD) and a **money figure** (the L2 execution
