@@ -1101,3 +1101,74 @@ highest number here.
   arborist (`edgesOut` on an optional Vitest peer), so it is not in this
   change. Trivy did not report Vite.
 
+
+### D42: receipt-first redesign — adopt the reference layout; page CSS lives in per-page files
+- Status: APPROVED (planner, 2026-11-19 — palette retune flagged for operator sign-off on F6z's PR)
+- Type: design-choice
+- Date: 2026-11-19
+- Source: operator request 2026-11-19 with a reference mock ("Crypto Transaction
+  Receipt Page" — receipt-first layout, ledger that reconciles, technical-details
+  side panel, failed state, light + dark, desktop + mobile)
+- Detail: The explorer moves from "table of fields" pages to **receipt-first**
+  pages. What we take from the reference: (1) a headline card that says in plain
+  words what happened ("ACME US Inc paid Tokyo Trading KK · USD → JPY"), status
+  pill + finality note, sent / received amounts large, cost line, copy-link
+  action; (2) a **"Where the money went" ledger** whose rows sum exactly (to the
+  wei / token base unit) to the net change it claims; (3) a collapsible
+  **Technical details** side panel (hash, block, time, from/to, status, gas,
+  nonce, raw links) that stacks under the receipt below 900px; (4) breadcrumbs;
+  (5) a manual light/dark toggle in the header on top of `prefers-color-scheme`;
+  (6) a designed failed/reverted state. What we do **not** take: the wallet
+  connect chip, the price ticker, the "Sponsored" ad slot, "Share receipt"
+  (copy link is enough), and any USD pricing — we have no price source and will
+  not invent one.
+
+  Palette: F6z retunes the `src/index.css` tokens toward the reference's neutral
+  canvas + single green accent, keeping D7-era AA contrast rules (measured, not
+  eyeballed). This is the subjective part; F6z's PR must carry light and dark
+  screenshots and the operator approves the look **before** wave 2 dispatches.
+
+  CSS ownership for the redesign: `src/index.css` stays the single home of every
+  colour value and shared primitive (F6z only). Wave-2 page tasks add CSS **only**
+  in a new `src/styles/<page>.css` imported by their page, using `var(--*)`
+  tokens and no hex. This is what lets F6aa / F6ab / F6ac run in parallel
+  despite §4's "serialize design tasks" rule — the hot zone is `index.css`, and
+  wave 2 never edits it.
+
+  Task ids after `F6z` continue `F6aa`, `F6ab`, … (two-letter suffix, in plan
+  order). Sub-task suffixes (`-fix`, `-test`) are unchanged.
+
+### D43: ForteL2 address history must cover the whole chain, not a recent window
+- Status: APPROVED
+- Type: bug-fix-approach
+- Date: 2026-11-19
+- Source: operator report 2026-11-19 ("a lot of times this page comes up with
+  little to no data"), reproduced by the planner the same day
+- Detail: For networks with no explorer account API (`etherscanApi: false`, i.e.
+  ForteL2), `src/chain/transfers.ts` discovers native txs by fetching **every one
+  of the last 2,000 blocks** with full transactions (`NATIVE_SCAN_BLOCKS`), and
+  token / escrow logs over the last **50,000** blocks. At ForteL2's 2.00 s/block
+  that is **~67 minutes** of native history and **~28 hours** of token history.
+  Anything older silently does not exist on the page.
+
+  Reproduced 2026-11-19 on `/fortel2-sepolia/address/0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2`
+  (head ≈ 3,846,221, public read RPC `https://fortel2-sequencer-rpc.onrender.com`):
+  `eth_getTransactionCount` = **13**, but the page lists **3** txs; nonce at
+  head−1,000,000 is already 10 and at head−2,000,000 is 0, so ten sends sit
+  ~23–46 days back. Page took **37 s** and **2,164 RPC requests** to reach that
+  incomplete result (browser resource timing, cold load).
+
+  Measured capabilities of that RPC (all 2026-11-19, ~0.21–0.30 s each):
+  historical state at old blocks answers (archive — nonce 0 vs 10 at the two
+  depths above); `eth_getLogs` rejects ranges over **100,000** blocks
+  (`-32602 query exceeds max block range 100000`); JSON-RPC batch arrays work.
+
+  **Required outcome:** full-history discovery for ForteL2 with a bounded,
+  measured RPC budget, results rendered progressively, and an explicit coverage
+  statement whenever discovery is incomplete (never an empty table that looks
+  like "no activity"). Recommended method (F6y may argue another with
+  evidence): token + escrow logs over the full chain in ≤100k-block spans with
+  topic filters; native activity located by bisecting historical
+  `(nonce, balance)` state rather than scanning blocks. Known blind spot of
+  bisection, to be disclosed on the page: incoming **zero-value** txs change no
+  state and cannot be found without an indexer.
