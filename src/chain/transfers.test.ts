@@ -1,5 +1,5 @@
 import { encodeAbiParameters, encodeEventTopics, type Address, type Hex } from 'viem'
-import { paymentSettlementEventsAbi } from '../config/abis'
+import { erc20Abi, paymentSettlementEventsAbi } from '../config/abis'
 import { getEscrowAddress } from '../config/address-book'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cacheClear } from '../lib/cache'
@@ -369,6 +369,52 @@ describe('getTransfers', () => {
     expect(result.coverage?.sent).toEqual({ found: 0, expected: 13 })
     expect(result.coverage?.gaps).toContain(
       'some historical account states were unavailable from the RPC',
+    )
+  })
+
+  it('keeps searching around a failed historical midpoint', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    mockPublicClient.getBlockNumber.mockResolvedValue(16n)
+    mockPublicClient.getTransactionCount.mockImplementation(async ({ blockNumber }) => {
+      if (blockNumber === 8n) throw new Error('archive block unavailable')
+      return blockNumber >= 10n ? 1 : 0
+    })
+    mockPublicClient.getBlock.mockResolvedValue({
+      ...emptyBlock(10n),
+      transactions: [{ hash: '0xsend', from: self, to: self, value: 0n, input: '0x' }],
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.items).toMatchObject([{ txHash: '0xsend' }])
+    expect(result.coverage).toEqual({ sent: { found: 1, expected: 1 }, gaps: [] })
+    const failedAttempts = mockPublicClient.getTransactionCount.mock.calls.filter(
+      ([{ blockNumber }]) => blockNumber === 8n,
+    )
+    expect(failedAttempts).toHaveLength(2)
+  })
+
+  it('dates the newest token rows first when the timestamp budget runs out', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    const to = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
+    const usdc = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
+    const topics = encodeEventTopics({ abi: erc20Abi, eventName: 'Transfer', args: { from: self, to } })
+    const data = encodeAbiParameters([{ type: 'uint256' }], [1n])
+    mockPublicClient.getLogs.mockImplementation(async (params) => {
+      const { address, args } = params as { address: Address; args?: { from?: string } }
+      if (address !== usdc || args?.from !== self) return []
+      return Array.from({ length: 513 }, (_, index) => ({
+        address, blockNumber: BigInt(index + 1), transactionHash: `0xtransfer-${index}`,
+        logIndex: 0, topics, data,
+      }))
+    })
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.items).toHaveLength(513)
+    expect(mockPublicClient.getBlock).toHaveBeenCalledTimes(512)
+    expect(result.items[0]).toMatchObject({ blockNumber: 513, timestamp: 1_700_000_000 })
+    expect(result.items.at(-1)).toMatchObject({ blockNumber: 1, timestamp: null })
+    expect(result.coverage?.gaps).toContain(
+      'some token dates are unavailable because the timestamp lookup limit was reached',
     )
   })
 

@@ -86,14 +86,14 @@ function AddressDetail({
   const transfers = useTransferHistory(networkId, address)
   const fullHistory = !NETWORKS[networkId].etherscanApi
   const result = transfers.status === 'ok' ? transfers.data : undefined
-  const gaps = result?.coverage?.gaps ?? []
+  const coverageDetails = [...(result?.coverage?.gaps ?? [])]
+  if (result?.error) coverageDetails.push(result.error)
   const sent = result?.coverage?.sent
-  const coverageMessage = fullHistory && result?.coverage && (result.error || gaps.length > 0)
+  const coverageMessage = fullHistory && result?.coverage && coverageDetails.length > 0
     ? [
         sent ? `Showing ${sent.found} of ${sent.expected} sent transactions.`
           : 'The total number of sent transactions is unavailable.',
-        ...gaps.map((gap) => `${gap}.`),
-        ...(result.error ? [`${result.error}.`] : []),
+        ...coverageDetails.map((detail) => `${detail.charAt(0).toUpperCase()}${detail.slice(1)}.`),
       ].join(' ')
     : undefined
 

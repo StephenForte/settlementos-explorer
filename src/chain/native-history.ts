@@ -6,6 +6,8 @@ import { getRpcOverride } from '../lib/rpc-overrides'
 const STATE_PROBE_LIMIT = 2048
 const FULL_BLOCK_LIMIT = 512
 const INTERVALS_PER_WAVE = 8
+const MAX_ATTEMPTS_PER_HEIGHT = 2
+const ARCHIVE_GAP = 'some historical account states were unavailable from the RPC'
 
 type State = { height: bigint; nonce: number; balance: bigint }
 type Interval = { older: State; newer: State }
@@ -41,6 +43,8 @@ export async function discoverNativeHistory(
     return { expected, problems: ['the RPC could not read a nonce at a fixed block'] }
   }
   const problems = new Set<string>()
+  const failedAttempts = new Map<bigint, number>()
+  const canProbe = (height: bigint) => (failedAttempts.get(height) ?? 0) < MAX_ATTEMPTS_PER_HEIGHT
   let probes = 0
   let blocks = 0
 
@@ -59,7 +63,7 @@ export async function discoverNativeHistory(
       ])
       return { height, nonce, balance }
     } catch {
-      problems.add('some historical account states were unavailable from the RPC')
+      failedAttempts.set(height, (failedAttempts.get(height) ?? 0) + 1)
     }
   }
 
@@ -83,9 +87,16 @@ export async function discoverNativeHistory(
   const states = (await Promise.all(
     [...new Set(anchors.filter((height) => height >= 0n))].map(stateAt),
   )).filter((state): state is State => state !== undefined)
-  for (let index = 1; index < states.length; index++) {
-    enqueue(states[index - 1]!, states[index]!)
+  if (states[0]?.height !== 0n || states.at(-1)?.height !== tip) {
+    problems.add(ARCHIVE_GAP)
   }
+
+  function enqueueBrackets(boundaries: State[]) {
+    for (let index = 1; index < boundaries.length; index++) {
+      enqueue(boundaries[index - 1]!, boundaries[index]!)
+    }
+  }
+  enqueueBrackets(states)
 
   async function fetchReadyBlocks() {
     await Promise.all(ready.splice(0).map(async (blockNumber) => {
@@ -109,6 +120,10 @@ export async function discoverNativeHistory(
 
   while (ready.length > 0 || intervals.length > 0) {
     await fetchReadyBlocks()
+    if (probes >= STATE_PROBE_LIMIT && intervals.length > 0) {
+      problems.add('native history state-probe limit reached')
+      break
+    }
     intervals.sort((a, b) => Number(b.newer.height - a.newer.height))
     const wave = intervals.splice(0, INTERVALS_PER_WAVE)
     await Promise.all(wave.map(async ({ older, newer }) => {
@@ -116,14 +131,21 @@ export async function discoverNativeHistory(
       const width = newer.height - older.height
       const heights = [...new Set([1n, 2n, 3n].map((part) =>
         older.height + width * part / 4n,
-      ))].filter((height) => height > older.height)
-      const midpoints = await Promise.all(heights.map(stateAt))
-      const boundaries = [older, ...midpoints, newer]
-      for (let index = 1; index < boundaries.length; index++) {
-        const left = boundaries[index - 1]
-        const right = boundaries[index]
-        if (left && right) enqueue(left, right)
+      ))].filter((height) => height > older.height && canProbe(height))
+      if (heights.length === 0) {
+        // Retry transient failures at most once per height. If the usual
+        // pivots are exhausted, keep narrowing with a different interior block.
+        let alternate = older.height + 1n
+        while (alternate < newer.height && !canProbe(alternate)) alternate++
+        if (alternate === newer.height) {
+          problems.add(ARCHIVE_GAP)
+          return
+        }
+        heights.push(alternate)
       }
+      const midpoints = (await Promise.all(heights.map(stateAt)))
+        .filter((state): state is State => state !== undefined)
+      enqueueBrackets([older, ...midpoints, newer])
     }))
   }
 

@@ -486,6 +486,7 @@ async function fetchRpcTransfers(
   ] as bigint[]
   const timestamps = new Map<string, number>()
   const timestampLimit = fullHistory ? HISTORY_TIMESTAMP_LIMIT : 40
+  if (fullHistory) blockNums.sort((a, b) => Number(b - a))
   const datedBlocks = blockNums.slice(0, timestampLimit)
   if (fullHistory && blockNums.length > timestampLimit) {
     gaps.push('some token dates are unavailable because the timestamp lookup limit was reached')
