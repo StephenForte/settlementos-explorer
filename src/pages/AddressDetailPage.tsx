@@ -1,7 +1,12 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { isAddress } from 'viem'
 import { getBalances } from '../chain/balances'
-import { getTransfers } from '../chain/transfers'
+import {
+  getTransfers,
+  type NativeTxEvent,
+  type TransfersResult,
+} from '../chain/transfers'
 import {
   getEntityWallets,
   lookupAddress,
@@ -21,7 +26,7 @@ import { RoleBadge } from '../components/RoleBadge'
 import { RpcOverrideForm } from '../components/RpcOverrideForm'
 import { StatusBanner } from '../components/StatusBanner'
 import { TransferTable } from '../components/TransferTable'
-import { useAsync } from '../hooks/useAsync'
+import { useAsync, type AsyncState } from '../hooks/useAsync'
 
 export function AddressDetailPage() {
   const { networkId: rawNetwork, address: rawAddress = '' } = useParams()
@@ -36,7 +41,35 @@ export function AddressDetailPage() {
     )
   }
 
-  return <AddressDetail networkId={networkId} address={address} />
+  return <AddressDetail key={`${networkId}:${address}`} networkId={networkId} address={address} />
+}
+
+function useTransferHistory(networkId: NetworkId, address: string) {
+  const [attempt, setAttempt] = useState(0)
+  const [progress, setProgress] = useState<NativeTxEvent[]>([])
+  const [state, setState] = useState<AsyncState<TransfersResult>>({ status: 'loading' })
+
+  useEffect(() => {
+    let active = true
+    setProgress([])
+    setState({ status: 'loading' })
+    void getTransfers(networkId, address, (items) => {
+      if (active) setProgress(items)
+    }).then(
+      (data) => {
+        if (active) setState({ status: 'ok', data })
+      },
+      (err: unknown) => {
+        if (active) setState({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Request failed',
+        })
+      },
+    )
+    return () => { active = false }
+  }, [networkId, address, attempt])
+
+  return { ...state, progress, retry: () => setAttempt((value) => value + 1) }
 }
 
 function AddressDetail({
@@ -50,9 +83,19 @@ function AddressDetail({
   const balances = useAsync(`balances:${networkId}:${address}`, () =>
     getBalances(networkId, address),
   )
-  const transfers = useAsync(`transfers:${networkId}:${address}`, () =>
-    getTransfers(networkId, address),
-  )
+  const transfers = useTransferHistory(networkId, address)
+  const fullHistory = !NETWORKS[networkId].etherscanApi
+  const result = transfers.status === 'ok' ? transfers.data : undefined
+  const coverageDetails = [...(result?.coverage?.gaps ?? [])]
+  if (result?.error) coverageDetails.push(result.error)
+  const sent = result?.coverage?.sent
+  const coverageMessage = fullHistory && result?.coverage && coverageDetails.length > 0
+    ? [
+        sent ? `Showing ${sent.found} of ${sent.expected} sent transactions.`
+          : 'The total number of sent transactions is unavailable.',
+        ...coverageDetails.map((detail) => `${detail.charAt(0).toUpperCase()}${detail.slice(1)}.`),
+      ].join(' ')
+    : undefined
 
   const otherWallets =
     entry?.entityId != null
@@ -151,13 +194,25 @@ function AddressDetail({
             ? ` Each tx links to ${explorerName}.`
             : ' Tx hashes are shown raw (no public explorer yet).'}
         </p>
+        {fullHistory ? (
+          <p className="muted small">
+            Incoming zero-value transactions may be missing without an indexer.
+            Native transfers can also be missed when multiple changes leave the
+            same balance between sampled blocks.
+          </p>
+        ) : null}
         {transfers.status === 'loading' ? (
-          <p className="muted">Loading transactions…</p>
+          <>
+            <p className="muted">Loading transactions…</p>
+            {transfers.progress.length > 0 ? (
+              <TransferTable items={transfers.progress} self={address} networkId={networkId} />
+            ) : null}
+          </>
         ) : transfers.status === 'error' ? (
           <StatusBanner tone="error">
             Explorer / RPC history failed: {transfers.error}
           </StatusBanner>
-        ) : transfers.data.error &&
+        ) : !coverageMessage && transfers.data.error &&
           !transfers.data.truncated &&
           transfers.data.items.length === 0 ? (
           <StatusBanner tone="error">
@@ -165,7 +220,10 @@ function AddressDetail({
           </StatusBanner>
         ) : (
           <>
-            {transfers.data.error && !transfers.data.truncated ? (
+            {coverageMessage ? (
+              <StatusBanner tone="warn">Partial history. {coverageMessage}</StatusBanner>
+            ) : null}
+            {!coverageMessage && transfers.data.error && !transfers.data.truncated ? (
               <StatusBanner tone="warn">
                 Partial history: {transfers.data.error}
               </StatusBanner>
@@ -177,11 +235,11 @@ function AddressDetail({
                 showing eth_getLogs fallback (token transfers only).
               </StatusBanner>
             ) : null}
-            <TransferTable
-              items={transfers.data.items}
-              self={address}
-              networkId={networkId}
-            />
+            {fullHistory && transfers.data.items.length === 0 ? (
+              coverageMessage ? null : <p className="muted">No transactions found.</p>
+            ) : (
+              <TransferTable items={transfers.data.items} self={address} networkId={networkId} />
+            )}
           </>
         )}
       </section>
