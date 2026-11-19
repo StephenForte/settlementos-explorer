@@ -1,3 +1,6 @@
+import { encodeAbiParameters, encodeEventTopics, type Address, type Hex } from 'viem'
+import { paymentSettlementEventsAbi } from '../config/abis'
+import { getEscrowAddress } from '../config/address-book'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cacheClear } from '../lib/cache'
 import {
@@ -33,6 +36,8 @@ const emptyBlock = (blockNumber?: bigint): MockBlock => ({
 
 const mockPublicClient = {
   getBlockNumber: vi.fn(async () => 1000n),
+  getTransactionCount: vi.fn(async (_params: { blockNumber: bigint }) => 0),
+  getBalance: vi.fn(async (_params: { blockNumber: bigint }) => 0n),
   getLogs: vi.fn(async (_params?: unknown) => [] as unknown[]),
   getBlock: vi.fn(
     async ({ blockNumber }: { blockNumber?: bigint } = {}): Promise<MockBlock> =>
@@ -44,7 +49,14 @@ vi.mock('../lib/clients', () => ({
   getPublicClient: () => mockPublicClient,
 }))
 
+vi.mock('./native-history', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./native-history')>(),
+  createNativeHistoryClient: () => mockPublicClient,
+}))
+
 afterEach(() => {
+  mockPublicClient.getTransactionCount.mockReset().mockResolvedValue(0)
+  mockPublicClient.getBalance.mockReset().mockResolvedValue(0n)
   cacheClear()
   vi.unstubAllGlobals()
   mockPublicClient.getBlockNumber.mockReset()
@@ -226,10 +238,13 @@ describe('getTransfers', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('includes native txs from recent block scan on networks without Etherscan', async () => {
+  it('finds incoming value transfers by their historical balance change', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
     const counterparty = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
     mockPublicClient.getBlockNumber.mockResolvedValue(5n)
+    mockPublicClient.getBalance.mockImplementation(async ({ blockNumber }) =>
+      blockNumber >= 4n ? 1_000_000_000_000_000n : 0n,
+    )
     mockPublicClient.getBlock.mockImplementation(
       async ({
         blockNumber,
@@ -269,6 +284,151 @@ describe('getTransfers', () => {
       expect(native.from.toLowerCase()).toBe(counterparty.toLowerCase())
       expect(native.to.toLowerCase()).toBe(self.toLowerCase())
     }
+  })
+
+  it('finds every send across a sparse history within a bounded native RPC budget', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    const sentAt = [50n, 50n, 350n, 600n]
+    mockPublicClient.getTransactionCount.mockImplementation(async ({ blockNumber }) =>
+      sentAt.filter((height) => height <= blockNumber).length,
+    )
+    mockPublicClient.getBlock.mockImplementation(async ({ blockNumber } = {}) => ({
+      ...emptyBlock(blockNumber),
+      transactions: sentAt.flatMap((height, index) => height === blockNumber ? [{
+        hash: `0xsend${index}`, from: self, to: self, value: 0n, input: '0x',
+      }] : []),
+    }))
+
+    const nativeCalls = []
+    for (const tip of [1_000n, 4_000_000n]) {
+      cacheClear()
+      mockPublicClient.getBlockNumber.mockResolvedValue(tip)
+      for (const mock of [
+        mockPublicClient.getTransactionCount, mockPublicClient.getBalance,
+        mockPublicClient.getBlock, mockPublicClient.getLogs,
+      ]) mock.mockClear()
+      const onProgress = vi.fn()
+      const result = await getTransfers('fortel2-sepolia', self, onProgress)
+      expect(result.coverage).toEqual({ sent: { found: 4, expected: 4 }, gaps: [] })
+      expect(result.items.map((item) => item.txHash)).toEqual([
+        '0xsend3', '0xsend2', '0xsend0', '0xsend1',
+      ])
+      expect(onProgress).toHaveBeenCalled()
+      expect(mockPublicClient.getBlock).toHaveBeenCalledTimes(3)
+      nativeCalls.push(mockPublicClient.getTransactionCount.mock.calls.length +
+        mockPublicClient.getBalance.mock.calls.length + mockPublicClient.getBlock.mock.calls.length)
+      expect(mockPublicClient.getLogs).toHaveBeenCalledTimes(7 * Math.ceil(Number(tip + 1n) / 100_000))
+      for (const [params] of mockPublicClient.getLogs.mock.calls) {
+        const { fromBlock, toBlock } = params as { fromBlock: bigint; toBlock: bigint }
+        expect(toBlock - fromBlock + 1n).toBeLessThanOrEqual(100_000n)
+      }
+    }
+    // A 4,000-fold increase in head height adds only a few state-search rounds.
+    expect(nativeCalls[1]).toBeLessThan(150)
+    expect(nativeCalls[1]).toBeLessThan(nativeCalls[0]! * 3)
+  })
+
+  it('publishes native rows to concurrent callers while token and escrow logs are pending', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    mockPublicClient.getBlockNumber.mockResolvedValue(1n)
+    mockPublicClient.getTransactionCount.mockImplementation(async ({ blockNumber }) =>
+      Number(blockNumber),
+    )
+    mockPublicClient.getBlock.mockResolvedValue({
+      ...emptyBlock(1n),
+      transactions: [{ hash: '0xsend', from: self, to: self, value: 0n, input: '0x' }],
+    })
+    let finishLogs: (logs: unknown[]) => void = () => {}
+    const waitForLogs = new Promise<unknown[]>((resolve) => { finishLogs = resolve })
+    mockPublicClient.getLogs.mockReturnValue(waitForLogs)
+    const first = vi.fn()
+    const second = vi.fn()
+    const result = getTransfers('fortel2-sepolia', self, first)
+    const secondResult = getTransfers('fortel2-sepolia', self, second)
+    try {
+      await vi.waitFor(() => {
+        expect(first).toHaveBeenCalledWith([expect.objectContaining({ txHash: '0xsend' })])
+        expect(second).toHaveBeenCalledWith([expect.objectContaining({ txHash: '0xsend' })])
+      })
+    } finally {
+      finishLogs([])
+      await Promise.all([result, secondResult])
+    }
+    expect(mockPublicClient.getBlock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports an archive gap with the sent count from the reachable head', async () => {
+    mockPublicClient.getTransactionCount.mockImplementation(async ({ blockNumber }) => {
+      if (blockNumber === 1000n) return 13
+      throw new Error('missing trie node')
+    })
+    const result = await getTransfers(
+      'fortel2-sepolia', '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2',
+    )
+    expect(result.items).toEqual([])
+    expect(result.coverage?.sent).toEqual({ found: 0, expected: 13 })
+    expect(result.coverage?.gaps).toContain(
+      'some historical account states were unavailable from the RPC',
+    )
+  })
+
+  it('reports partial coverage when the native full-block budget is exhausted', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    mockPublicClient.getBlockNumber.mockResolvedValue(700n)
+    mockPublicClient.getTransactionCount.mockImplementation(async ({ blockNumber }) =>
+      Number(blockNumber),
+    )
+    mockPublicClient.getBlock.mockImplementation(async ({ blockNumber } = {}) => ({
+      ...emptyBlock(blockNumber),
+      transactions: [{
+        hash: `0xsend-${blockNumber}`, from: self, to: self, value: 0n, input: '0x',
+      }],
+    }))
+
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(mockPublicClient.getBlock).toHaveBeenCalledTimes(512)
+    expect(mockPublicClient.getTransactionCount.mock.calls.length).toBeLessThanOrEqual(2048)
+    expect(result.coverage?.sent).toEqual({ found: 512, expected: 700 })
+    expect(result.coverage?.gaps).toContain('native history full-block limit reached')
+    expect(result.items).toHaveLength(512)
+  })
+
+  it('associates escrow settlement with a payment initiated in an older span', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    const recipient = '0x5128889F20Ec13e0Be38b2BeBC568594159B652d'
+    const paymentId = `0x${'01'.repeat(32)}` as Hex
+    const escrow = getEscrowAddress('fortel2-sepolia') as Address
+    mockPublicClient.getBlockNumber.mockResolvedValue(300_000n)
+    mockPublicClient.getLogs.mockImplementation(async (params) => {
+      const { address, fromBlock } = params as { address: Address; fromBlock: bigint }
+      if (address !== escrow) return []
+      if (fromBlock === 0n) return [{
+        address, blockNumber: 20n, transactionHash: '0xinitiate', logIndex: 0,
+        topics: encodeEventTopics({
+          abi: paymentSettlementEventsAbi, eventName: 'PaymentInitiated',
+          args: { sender: self, recipient, paymentId },
+        }),
+        data: encodeAbiParameters([
+          { type: 'address' }, { type: 'uint256' }, { type: 'string' }, { type: 'string' },
+        ], [escrow, 1n, 'USD', 'JPY']),
+      }]
+      if (fromBlock === 200_000n) return [{
+        address, blockNumber: 200_005n, transactionHash: '0xsettle', logIndex: 0,
+        topics: encodeEventTopics({
+          abi: paymentSettlementEventsAbi, eventName: 'PaymentSettled', args: { paymentId },
+        }),
+        data: encodeAbiParameters([
+          { type: 'bytes32' }, { type: 'uint256' }, { type: 'string' },
+        ], [paymentId, 1n, 'JPY']),
+      }]
+      return []
+    })
+    const result = await getTransfers('fortel2-sepolia', self)
+    expect(result.items).toMatchObject([
+      { kind: 'escrow', eventName: 'PaymentSettled', paymentId, blockNumber: 200_005 },
+      { kind: 'escrow', eventName: 'PaymentInitiated', paymentId, blockNumber: 20 },
+    ])
+    expect(result.coverage?.gaps).toEqual([])
   })
 
   it('rejects when primary RPC history fails on networks without Etherscan', async () => {
@@ -515,17 +675,17 @@ describe('getTransfers', () => {
   it('keeps survivors and stays silent when within-window loss is at or below the signal ratio', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
     const token = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
-    // Three chunks in [0, 5000]: 0–1999, 2000–3999, 4000–5000.
+    // Three inclusive 100k spans in [0, 200000], with a one-block final span.
     // 1/3 failed = below CHUNK_LOSS_SIGNAL_RATIO (0.5).
     expect(1 / 3).toBeLessThanOrEqual(CHUNK_LOSS_SIGNAL_RATIO)
-    mockPublicClient.getBlockNumber.mockResolvedValue(5000n)
+    mockPublicClient.getBlockNumber.mockResolvedValue(200000n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { fromBlock, args } = (params ?? {}) as {
         fromBlock?: bigint
         args?: { from?: string; to?: string }
       }
       // Fail the middle chunk only; succeed elsewhere with one outgoing Transfer.
-      if (fromBlock === 2000n) {
+      if (fromBlock === 100000n) {
         throw new Error('chunk rejected')
       }
       if (fromBlock === 0n && args?.from) {
@@ -551,6 +711,9 @@ describe('getTransfers', () => {
     expect(result.source).toBe('rpc-logs')
     expect(result.truncated).toBe(false)
     expect(result.error).toBeUndefined()
+    expect(result.coverage?.gaps).toEqual(expect.arrayContaining([
+      expect.stringMatching(/RPC missed .* token log spans/),
+    ]))
     const transfer = result.items.find((i) => i.kind === 'transfer')
     expect(transfer?.kind).toBe('transfer')
     if (transfer?.kind === 'transfer') {
@@ -561,15 +724,15 @@ describe('getTransfers', () => {
   it('stays silent when within-window loss equals the signal ratio exactly', async () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
     const token = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
-    // Four chunks in [0, 7999]: 0, 2000, 4000, 6000. Fail exactly two → 0.50.
+    // Four chunks in [0, 399999]: 0, 100000, 200000, 300000. Fail exactly two → 0.50.
     expect(2 / 4).toBe(CHUNK_LOSS_SIGNAL_RATIO)
-    mockPublicClient.getBlockNumber.mockResolvedValue(7999n)
+    mockPublicClient.getBlockNumber.mockResolvedValue(399999n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { fromBlock, args } = (params ?? {}) as {
         fromBlock?: bigint
         args?: { from?: string; to?: string }
       }
-      if (fromBlock === 2000n || fromBlock === 4000n) {
+      if (fromBlock === 100000n || fromBlock === 200000n) {
         throw new Error('chunk rejected')
       }
       if (fromBlock === 0n && args?.from) {
@@ -596,6 +759,9 @@ describe('getTransfers', () => {
     expect(result.truncated).toBe(false)
     // Pins strict `>`: equality must not signal (D30).
     expect(result.error).toBeUndefined()
+    expect(result.coverage?.gaps).toEqual(expect.arrayContaining([
+      expect.stringMatching(/RPC missed .* token log spans/),
+    ]))
     const transfer = result.items.find((i) => i.kind === 'transfer')
     expect(transfer?.kind).toBe('transfer')
     if (transfer?.kind === 'transfer') {
@@ -608,7 +774,7 @@ describe('getTransfers', () => {
     const token = '0x7d7b168cfab3dba1afc41f6160e886ffe9997e63'
     // Three chunks; fail two on the USDC outgoing direction only → 2/3 > 0.5.
     expect(2 / 3).toBeGreaterThan(CHUNK_LOSS_SIGNAL_RATIO)
-    mockPublicClient.getBlockNumber.mockResolvedValue(5000n)
+    mockPublicClient.getBlockNumber.mockResolvedValue(200000n)
     mockPublicClient.getLogs.mockImplementation(async (params?: unknown) => {
       const { address, fromBlock, args } = (params ?? {}) as {
         address?: string
@@ -618,7 +784,7 @@ describe('getTransfers', () => {
       const isUsdcOutgoing =
         address?.toLowerCase() === token.toLowerCase() &&
         args?.from?.toLowerCase() === self.toLowerCase()
-      if (isUsdcOutgoing && (fromBlock === 2000n || fromBlock === 4000n)) {
+      if (isUsdcOutgoing && (fromBlock === 100000n || fromBlock === 200000n)) {
         throw new Error('chunk rejected')
       }
       if (isUsdcOutgoing && fromBlock === 0n) {

@@ -14,6 +14,7 @@ import { cached } from '../lib/cache'
 import { getPublicClient } from '../lib/clients'
 import { getEtherscanApiKey } from '../lib/env'
 import { formatTokenAmount } from '../lib/format'
+import { createNativeHistoryClient, discoverNativeHistory } from './native-history'
 
 export type TransferSource = 'explorer-api' | 'rpc-logs'
 
@@ -72,6 +73,10 @@ export interface TransfersResult {
   source: TransferSource
   truncated: boolean
   error?: string
+  coverage?: {
+    sent: { found: number; expected: number } | undefined
+    gaps: string[]
+  }
 }
 
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
@@ -83,11 +88,14 @@ export const LOG_CHUNK = 2_000n
  * At-or-below stays silent — public RPCs often reject a minority of chunks (D30).
  */
 export const CHUNK_LOSS_SIGNAL_RATIO = 0.5
-/** Recent-block window for native tx discovery (no explorer / indexer). */
-const NATIVE_SCAN_BLOCKS = 2_000n
-const NATIVE_SCAN_CONCURRENCY = 16
-/** Match explorer txlist page size. */
-const NATIVE_RESULT_LIMIT = 100
+const HISTORY_LOG_SPAN = 100_000n
+const HISTORY_SPAN_LIMIT = 128n
+const HISTORY_TIMESTAMP_LIMIT = 512
+
+function historyLogStart(tip: bigint) {
+  const capacity = HISTORY_SPAN_LIMIT * HISTORY_LOG_SPAN
+  return tip < capacity ? 0n : tip - capacity + 1n
+}
 
 type ChunkedLogsResult = {
   logs: Log[]
@@ -345,6 +353,7 @@ async function getLogsChunked(
     fromBlock: bigint
     toBlock: bigint
   },
+  span = LOG_CHUNK,
 ): Promise<ChunkedLogsResult> {
   const client = getPublicClient(networkId)
   const logs: Log[] = []
@@ -353,9 +362,9 @@ async function getLogsChunked(
   let chunksFailed = 0
   while (start <= params.toBlock) {
     const end =
-      start + LOG_CHUNK - 1n > params.toBlock
+      start + span - 1n > params.toBlock
         ? params.toBlock
-        : start + LOG_CHUNK - 1n
+        : start + span - 1n
     chunksAttempted += 1
     try {
       const chunk = await client.getLogs({
@@ -365,7 +374,7 @@ async function getLogsChunked(
         fromBlock: start,
         toBlock: end,
       })
-      logs.push(...chunk)
+      for (const log of chunk) logs.push(log)
     } catch {
       // Skip failed chunks — public RPCs often reject some eth_getLogs windows.
       // Survivors still return; heavy within-window loss is signalled by the caller (D30).
@@ -386,11 +395,16 @@ async function getLogsChunked(
 async function fetchRpcTransfers(
   networkId: NetworkId,
   address: string,
-): Promise<{ transfers: TransferEvent[]; error?: string }> {
+): Promise<{ transfers: TransferEvent[]; error?: string; gaps: string[] }> {
   const client = getPublicClient(networkId)
   const latest = await client.getBlockNumber()
-  const fromBlock =
-    latest > LOG_WINDOW_BLOCKS ? latest - LOG_WINDOW_BLOCKS : 0n
+  const fullHistory = !NETWORKS[networkId].etherscanApi
+  const fromBlock = fullHistory
+    ? historyLogStart(latest)
+    : latest > LOG_WINDOW_BLOCKS ? latest - LOG_WINDOW_BLOCKS : 0n
+  const span = fullHistory ? HISTORY_LOG_SPAN : LOG_CHUNK
+  const gaps: string[] = []
+  if (fullHistory && fromBlock > 0n) gaps.push('token history span limit reached')
   const addr = address as Address
   const tokens = getTokens(networkId)
 
@@ -400,6 +414,7 @@ async function fetchRpcTransfers(
   let incompleteDirections = 0
   let incompleteChunksFailed = 0
   let incompleteChunksAttempted = 0
+  let missedSpans = 0
 
   const recordDirection = (
     settled: PromiseSettledResult<ChunkedLogsResult>,
@@ -410,6 +425,7 @@ async function fetchRpcTransfers(
         allLogs.push({ log, token })
       }
       const { chunksAttempted, chunksFailed } = settled.value
+      missedSpans += chunksFailed
       if (chunkLossWorthSignalling(chunksAttempted, chunksFailed)) {
         incompleteDirections += 1
         incompleteChunksFailed += chunksFailed
@@ -424,24 +440,29 @@ async function fetchRpcTransfers(
     )
   }
 
-  for (const token of tokens) {
+  async function readToken(token: TokenMeta) {
     const [outgoing, incoming] = await Promise.allSettled([
       getLogsChunked(networkId, {
         address: token.address as Address,
         args: { from: addr },
         fromBlock,
         toBlock: latest,
-      }),
+      }, span),
       getLogsChunked(networkId, {
         address: token.address as Address,
         args: { to: addr },
         fromBlock,
         toBlock: latest,
-      }),
+      }, span),
     ])
     directionAttempts += 2
     recordDirection(outgoing, token)
     recordDirection(incoming, token)
+  }
+  if (fullHistory) {
+    await Promise.all(tokens.map(readToken))
+  } else {
+    for (const token of tokens) await readToken(token)
   }
 
   // Every token×direction window failed — not a quiet empty history (F6r).
@@ -459,20 +480,31 @@ async function fetchRpcTransfers(
   })
 
   const blockNums = [
-    ...new Set(unique.map(({ log }) => log.blockNumber).filter(Boolean)),
+    ...new Set(unique.map(({ log }) => log.blockNumber).filter(
+      (height) => fullHistory ? height !== null : Boolean(height),
+    )),
   ] as bigint[]
   const timestamps = new Map<string, number>()
-  await Promise.all(
-    blockNums.slice(0, 40).map(async (bn) => {
+  const timestampLimit = fullHistory ? HISTORY_TIMESTAMP_LIMIT : 40
+  const datedBlocks = blockNums.slice(0, timestampLimit)
+  if (fullHistory && blockNums.length > timestampLimit) {
+    gaps.push('some token dates are unavailable because the timestamp lookup limit was reached')
+  }
+  let missedDates = 0
+  const timestampConcurrency = fullHistory ? 16 : 40
+  for (let start = 0; start < datedBlocks.length; start += timestampConcurrency) {
+    await Promise.all(datedBlocks.slice(start, start + timestampConcurrency).map(async (bn) => {
       try {
         const block = await client.getBlock({ blockNumber: bn })
         timestamps.set(bn.toString(), Number(block.timestamp))
       } catch {
-        /* ignore */
+        missedDates++
       }
-    }),
-  )
+    }))
+  }
+  if (fullHistory && missedDates) gaps.push('the RPC could not provide some token dates')
 
+  let invalidLogs = 0
   const transfers = unique
     .map(({ log, token }) => {
       try {
@@ -482,6 +514,10 @@ async function fetchRpcTransfers(
           topics: log.topics,
         })
         if (decoded.eventName !== 'Transfer') return null
+        if (fullHistory && (log.transactionHash == null || log.blockNumber == null)) {
+          invalidLogs++
+          return null
+        }
         const { from, to, value } = decoded.args
         return annotateTransfer(networkId, {
           from,
@@ -494,6 +530,7 @@ async function fetchRpcTransfers(
           timestamp: timestamps.get(String(log.blockNumber)) ?? null,
         })
       } catch {
+        invalidLogs++
         return null
       }
     })
@@ -513,8 +550,13 @@ async function fetchRpcTransfers(
     )
   }
 
+  if (fullHistory && missedSpans > 0) {
+    gaps.push(`RPC missed ${missedSpans} token log spans`)
+  }
+  if (fullHistory && invalidLogs) gaps.push('some token transfers could not be decoded')
   return {
     transfers,
+    gaps,
     error:
       partialParts.length > 0
         ? `token history partial: ${partialParts.join('; ')}`
@@ -522,189 +564,198 @@ async function fetchRpcTransfers(
   }
 }
 
-/**
- * Discover native (and zero-value) txs by scanning recent blocks.
- * Used for networks without an explorer account API — eth_getLogs cannot
- * surface value transfers that emit no ERC-20 Transfer event.
- */
 async function fetchRpcNativeTxs(
   networkId: NetworkId,
   address: string,
-): Promise<NativeTxEvent[]> {
-  const client = getPublicClient(networkId)
-  const latest = await client.getBlockNumber()
-  const fromBlock =
-    latest > NATIVE_SCAN_BLOCKS ? latest - NATIVE_SCAN_BLOCKS : 0n
-  const addr = address.toLowerCase()
+  onProgress: (items: NativeTxEvent[]) => void,
+) {
+  const client = createNativeHistoryClient(networkId)
+  const self = address.toLowerCase()
   const items: NativeTxEvent[] = []
-
-  let end = latest
-  while (end >= fromBlock && items.length < NATIVE_RESULT_LIMIT) {
-    const batchStart = end + 1n - BigInt(NATIVE_SCAN_CONCURRENCY)
-    const start = batchStart < fromBlock ? fromBlock : batchStart
-    const blockNumbers: bigint[] = []
-    for (let bn = end; bn >= start; bn--) {
-      blockNumbers.push(bn)
+  const { expected, problems } = await discoverNativeHistory(client, address as Address, (block) => {
+    const previousCount = items.length
+    for (const tx of block.transactions) {
+      if (typeof tx === 'string') continue
+      const outgoing = tx.from.toLowerCase() === self
+      if (!outgoing && tx.to?.toLowerCase() !== self) continue
+      const input = tx.input ?? '0x'
+      items.push(annotateNative(networkId, {
+        from: tx.from,
+        to: tx.to ?? address,
+        amountRaw: tx.value,
+        amountFormatted: formatTokenAmount(tx.value, 18),
+        txHash: tx.hash,
+        blockNumber: Number(block.number),
+        timestamp: Number(block.timestamp),
+        method: input !== '0x' ? input.slice(0, 10) : undefined,
+      }))
     }
-
-    const blocks = await Promise.all(
-      blockNumbers.map(async (bn) => {
-        try {
-          return await client.getBlock({
-            blockNumber: bn,
-            includeTransactions: true,
-          })
-        } catch {
-          return null
-        }
-      }),
-    )
-
-    for (const block of blocks) {
-      if (!block || items.length >= NATIVE_RESULT_LIMIT) continue
-      const txs = block.transactions ?? []
-      for (const tx of txs) {
-        if (typeof tx === 'string') continue
-        const from = tx.from.toLowerCase()
-        const to = (tx.to ?? '').toLowerCase()
-        if (from !== addr && to !== addr) continue
-        const amountRaw = tx.value
-        const input = tx.input ?? '0x'
-        const method = input !== '0x' ? input.slice(0, 10) : undefined
-        items.push(
-          annotateNative(networkId, {
-            from: tx.from,
-            to: tx.to ?? address,
-            amountRaw,
-            amountFormatted: formatTokenAmount(amountRaw, 18),
-            txHash: tx.hash,
-            blockNumber: Number(block.number),
-            timestamp: Number(block.timestamp),
-            method,
-          }),
-        )
-        if (items.length >= NATIVE_RESULT_LIMIT) break
-      }
+    if (items.length !== previousCount) {
+      onProgress([...items].sort((a, b) => b.blockNumber - a.blockNumber))
     }
-
-    if (start === 0n) break
-    end = start - 1n
-  }
-
-  return items
+  })
+  const found = items.filter((item) => item.from.toLowerCase() === self).length
+  if (found !== expected) problems.push('the sent transaction count differs from the account nonce')
+  return { items, coverage: { sent: { found, expected }, gaps: problems } }
 }
 
-async function fetchEscrowEvents(
+function decodeEscrowHistory(
   networkId: NetworkId,
   address: string,
-): Promise<EscrowLifecycleEvent[]> {
-  const escrowAddress = getEscrowAddress(networkId)
-  if (!escrowAddress) return []
-  const settlement = escrowAddress as Address
-  const isEscrow =
-    lookupAddress(networkId, address)?.role === 'escrow-contract'
-  const client = getPublicClient(networkId)
-  const latest = await client.getBlockNumber()
-  const fromBlock =
-    latest > LOG_WINDOW_BLOCKS ? latest - LOG_WINDOW_BLOCKS : 0n
-
-  try {
-    const logs = await client.getLogs({
-      address: settlement,
-      fromBlock,
-      toBlock: latest,
-      events: paymentSettlementEventsAbi,
-    })
-
-    const items: EscrowLifecycleEvent[] = []
-    for (const log of logs) {
-      try {
-        const decoded = decodeEventLog({
-          abi: paymentSettlementEventsAbi,
-          data: log.data,
-          topics: log.topics as [Hex, ...Hex[]],
-        })
-        const txHash = log.transactionHash ?? ''
-        const blockNumber = Number(log.blockNumber ?? 0n)
-        const base = {
-          kind: 'escrow' as const,
-          networkId,
-          txHash,
-          blockNumber,
-          timestamp: null as number | null,
-        }
-
-        if (decoded.eventName === 'PaymentInitiated') {
-          const {
-            paymentId,
-            sender,
-            recipient,
-            asset,
-            amount,
-            sourceCurrency,
-            destinationCurrency,
-          } = decoded.args
-          const related = [sender, recipient, settlement].map((a) =>
-            a.toLowerCase(),
-          )
-          if (!isEscrow && !related.includes(address.toLowerCase())) continue
-          const token = lookupToken(networkId, asset)
-          items.push({
-            ...base,
-            eventName: 'PaymentInitiated',
-            paymentId,
-            relatedAddress: sender,
-            relatedLabel: labelForAddress(networkId, sender),
-            amountRaw: amount,
-            amountFormatted: token
-              ? formatTokenAmount(amount, token.decimals)
-              : amount.toString(),
-            token,
-            detail: `${sourceCurrency} → ${destinationCurrency} · recipient ${labelForAddress(networkId, recipient)}`,
-          })
-        } else if (decoded.eventName === 'PaymentSettled') {
-          if (!isEscrow) continue
-          const { paymentId, settledAmount, destinationAsset } = decoded.args
-          items.push({
-            ...base,
-            eventName: 'PaymentSettled',
-            paymentId,
-            amountRaw: settledAmount,
-            amountFormatted: settledAmount.toString(),
-            detail: `settled as ${destinationAsset}`,
-          })
-        } else if (decoded.eventName === 'PaymentRefunded') {
-          const { paymentId, refundedTo, amount } = decoded.args
-          if (
-            !isEscrow &&
-            refundedTo.toLowerCase() !== address.toLowerCase()
-          ) {
-            continue
-          }
-          items.push({
-            ...base,
-            eventName: 'PaymentRefunded',
-            paymentId,
-            relatedAddress: refundedTo,
-            relatedLabel: labelForAddress(networkId, refundedTo),
-            amountRaw: amount,
-            amountFormatted: amount.toString(),
-          })
-        }
-      } catch {
-        /* skip undecodable */
+  settlement: Address,
+  logs: Log[],
+  fullHistory: boolean,
+) {
+  const isEscrow = lookupAddress(networkId, address)?.role === 'escrow-contract'
+  let invalidLogs = 0
+  const self = address.toLowerCase()
+  const decodedLogs = logs.flatMap((log) => {
+    try {
+      const decoded = decodeEventLog({
+        abi: paymentSettlementEventsAbi,
+        data: log.data,
+        topics: log.topics as [Hex, ...Hex[]],
+      })
+      return [{ log, decoded }]
+    } catch {
+      invalidLogs++
+      return []
+    }
+  })
+  const relatedPayments = new Set<string>()
+  if (fullHistory && !isEscrow) {
+    for (const { decoded } of decodedLogs) {
+      if (decoded.eventName !== 'PaymentInitiated') continue
+      const { sender, recipient, paymentId } = decoded.args
+      if ([sender, recipient, settlement].some((party) => party.toLowerCase() === self)) {
+        relatedPayments.add(paymentId)
       }
     }
-    return items
-  } catch {
-    return []
   }
+
+  const items: EscrowLifecycleEvent[] = []
+  for (const { log, decoded } of decodedLogs) {
+    const txHash = log.transactionHash ?? ''
+    const blockNumber = Number(log.blockNumber ?? 0n)
+    const base = {
+      kind: 'escrow' as const,
+      networkId,
+      txHash,
+      blockNumber,
+      timestamp: null as number | null,
+    }
+
+    if (decoded.eventName === 'PaymentInitiated') {
+      const {
+        paymentId,
+        sender,
+        recipient,
+        asset,
+        amount,
+        sourceCurrency,
+        destinationCurrency,
+      } = decoded.args
+      const related = [sender, recipient, settlement].map((a) =>
+        a.toLowerCase(),
+      )
+      if (!isEscrow && !related.includes(self)) continue
+      const token = lookupToken(networkId, asset)
+      items.push({
+        ...base,
+        eventName: 'PaymentInitiated',
+        paymentId,
+        relatedAddress: sender,
+        relatedLabel: labelForAddress(networkId, sender),
+        amountRaw: amount,
+        amountFormatted: token
+          ? formatTokenAmount(amount, token.decimals)
+          : amount.toString(),
+        token,
+        detail: `${sourceCurrency} → ${destinationCurrency} · recipient ${labelForAddress(networkId, recipient)}`,
+      })
+    } else if (decoded.eventName === 'PaymentSettled') {
+      const { paymentId, settledAmount, destinationAsset } = decoded.args
+      if (!isEscrow && !relatedPayments.has(paymentId)) continue
+      items.push({
+        ...base,
+        eventName: 'PaymentSettled',
+        paymentId,
+        amountRaw: settledAmount,
+        amountFormatted: settledAmount.toString(),
+        detail: `settled as ${destinationAsset}`,
+      })
+    } else if (decoded.eventName === 'PaymentRefunded') {
+      const { paymentId, refundedTo, amount } = decoded.args
+      if (
+        !isEscrow &&
+        refundedTo.toLowerCase() !== self &&
+        !relatedPayments.has(paymentId)
+      ) {
+        continue
+      }
+      items.push({
+        ...base,
+        eventName: 'PaymentRefunded',
+        paymentId,
+        relatedAddress: refundedTo,
+        relatedLabel: labelForAddress(networkId, refundedTo),
+        amountRaw: amount,
+        amountFormatted: amount.toString(),
+      })
+    }
+  }
+  return { items, invalidLogs }
+}
+
+async function fetchEscrowEvents(networkId: NetworkId, address: string) {
+  const gaps: string[] = []
+  const escrowAddress = getEscrowAddress(networkId) as Address | undefined
+  if (!escrowAddress) return { items: [], gaps }
+
+  const client = getPublicClient(networkId)
+  const tip = await client.getBlockNumber()
+  const read = (fromBlock: bigint, toBlock: bigint) => client.getLogs({
+    address: escrowAddress,
+    fromBlock,
+    toBlock,
+    events: paymentSettlementEventsAbi,
+  })
+  const fullHistory = !NETWORKS[networkId].etherscanApi
+  if (!fullHistory) {
+    const fromBlock = tip > LOG_WINDOW_BLOCKS ? tip - LOG_WINDOW_BLOCKS : 0n
+    const { items } = decodeEscrowHistory(
+      networkId, address, escrowAddress, await read(fromBlock, tip), false,
+    )
+    return { items, gaps }
+  }
+
+  const start = historyLogStart(tip)
+  if (start > 0n) gaps.push('escrow history span limit reached')
+  let missedSpans = 0
+  const logs: Log[] = []
+  for (let from = start; from <= tip; from += HISTORY_LOG_SPAN) {
+    const to = from + HISTORY_LOG_SPAN - 1n
+    try {
+      for (const log of await read(from, to < tip ? to : tip)) logs.push(log)
+    } catch {
+      missedSpans++
+    }
+  }
+  if (missedSpans) gaps.push(`RPC missed ${missedSpans} escrow log spans`)
+  const { items, invalidLogs } = decodeEscrowHistory(
+    networkId, address, escrowAddress, logs, true,
+  )
+  if (invalidLogs) gaps.push('some escrow events could not be decoded')
+  return { items, gaps }
 }
 
 async function fetchTransfers(
   networkId: NetworkId,
   address: string,
+  onProgress: (items: NativeTxEvent[]) => void,
 ): Promise<TransfersResult> {
+  let coverage: TransfersResult['coverage']
+  let escrow: EscrowLifecycleEvent[] = []
   let transfers: TransferEvent[] = []
   let native: NativeTxEvent[] = []
   let source: TransferSource = 'explorer-api'
@@ -738,23 +789,26 @@ async function fetchTransfers(
       }
     }
   } else {
-    // Networks without an explorer API use RPC as the primary source.
-    // Token history comes from eth_getLogs; native txs from a recent-block scan
-    // (value transfers leave no ERC-20 Transfer log).
-    // Do not mark truncated — that flag means explorer outage / degraded fallback.
-    // Reject when both sources hard-fail. Soft partial token failure keeps any
-    // transfers and sets error so the UI does not treat a partial timeline as complete.
-    const [tokenResult, nativeResult] = await Promise.allSettled([
+    const [tokenResult, nativeResult, escrowResult] = await Promise.allSettled([
       fetchRpcTransfers(networkId, address),
-      fetchRpcNativeTxs(networkId, address),
+      fetchRpcNativeTxs(networkId, address, onProgress),
+      fetchEscrowEvents(networkId, address),
     ])
 
+    coverage = { sent: undefined, gaps: [] }
+    if (escrowResult.status === 'fulfilled') {
+      escrow = escrowResult.value.items
+      coverage.gaps.push(...escrowResult.value.gaps)
+    } else {
+      coverage.gaps.push('RPC could not read escrow history')
+    }
     const softErrors: string[] = []
     let tokenHardFail = false
     let nativeHardFail = false
 
     if (tokenResult.status === 'fulfilled') {
       transfers = tokenResult.value.transfers
+      coverage.gaps.push(...tokenResult.value.gaps)
       if (tokenResult.value.error) {
         softErrors.push(tokenResult.value.error)
       }
@@ -770,7 +824,9 @@ async function fetchTransfers(
     }
 
     if (nativeResult.status === 'fulfilled') {
-      native = nativeResult.value
+      native = nativeResult.value.items
+      coverage.sent = nativeResult.value.coverage.sent
+      coverage.gaps.push(...nativeResult.value.coverage.gaps)
     } else {
       nativeHardFail = true
       softErrors.push(
@@ -784,7 +840,7 @@ async function fetchTransfers(
 
     source = 'rpc-logs'
 
-    if (tokenHardFail && nativeHardFail) {
+    if (tokenHardFail && nativeHardFail && escrow.length === 0) {
       const reason =
         tokenResult.status === 'rejected' &&
         tokenResult.reason instanceof Error
@@ -797,24 +853,55 @@ async function fetchTransfers(
     }
   }
 
-  const escrow = await fetchEscrowEvents(networkId, address).catch(() => [])
+  if (!coverage) {
+    escrow = await fetchEscrowEvents(networkId, address)
+      .then((result) => result.items)
+      .catch(() => [])
+  }
   const items: TimelineItem[] = [...transfers, ...native, ...escrow]
   items.sort((a, b) => {
+    if (coverage) return b.blockNumber - a.blockNumber
     const tb = b.timestamp ?? 0
     const ta = a.timestamp ?? 0
     if (tb !== ta) return tb - ta
     return b.blockNumber - a.blockNumber
   })
 
-  return { items, source, truncated, error }
+  return { items, source, truncated, error, ...(coverage && { coverage }) }
 }
 
-export function getTransfers(
+type TransferProgress = (items: NativeTxEvent[]) => void
+
+export async function getTransfers(
   networkId: NetworkId,
   address: string,
+  onProgress?: TransferProgress,
 ): Promise<TransfersResult> {
   const key = `transfers:${networkId}:${address.toLowerCase()}`
-  return cached(key, () => fetchTransfers(networkId, address))
+  if (NETWORKS[networkId].etherscanApi) {
+    return cached(key, () => fetchTransfers(networkId, address, () => {}))
+  }
+  // Share progress with callers joining the cached request. Using the same
+  // cache for this channel also isolates requests across RPC override changes.
+  const progress = await cached(`${key}:progress`, async () => ({
+    latest: [] as NativeTxEvent[],
+    listeners: new Set<TransferProgress>(),
+  }))
+  const result = cached(key, () => {
+    progress.latest = []
+    return fetchTransfers(networkId, address, (items) => {
+      progress.latest = items
+      for (const listener of progress.listeners) listener(items)
+    })
+  })
+  if (!onProgress) return result
+  progress.listeners.add(onProgress)
+  try {
+    if (progress.latest.length > 0) onProgress(progress.latest)
+    return await result
+  } finally {
+    progress.listeners.delete(onProgress)
+  }
 }
 
 export function onlyTransfers(items: TimelineItem[]): TransferEvent[] {
