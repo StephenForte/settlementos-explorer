@@ -147,18 +147,23 @@ F6u  ForteL2 transaction detail page    ✅ merged #49 (D33, D34)
 F6v  ForteL2 block detail page          ✅ merged #51 — D35 retired unused
 F6w  MCP get_transaction tool           ✅ merged #53 — D36 retired unused
 F6x  MCP get_block tool                 ✅ merged #55 — D37 retired unused
-F6y  ForteL2 full-history address view   ⏳ wave R1 — D43 (D44 reserved for F6y)
+F6y  ForteL2 full-history address view   ✅ approved #61 (await merge) — D43; D44 retired unused
 F6z  receipt design foundation          ⏳ wave R1 — D42 (D45 reserved for F6z)
 F6aa tx receipt page ("confirmation")   ⏸ wave R2, after F6z merges + operator approves look
 F6ab address page redesign              ⏸ wave R2, after F6y and F6z merge
 F6ac block / overview / entity redesign ⏸ wave R2, after F6z merges
+F6ad Semgrep silently passes on a crash  ⏸ found in F6y review 2026-11-19 — dispatchable now, CI-only
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6ad`** (D42: ids after `F6z` continue `F6aa`, `F6ab`, …). `F6y`–`F6ac` are assigned to the 2026-11-19 receipt-redesign wave below.
+**Next free identifier: `F6ae`** (D42: ids after `F6z` continue `F6aa`, `F6ab`, …). `F6y`–`F6ac` are assigned to the 2026-11-19 receipt-redesign wave below.
 
 **Receipt-redesign wave (2026-11-19).** Two operator issues: (1) revamp the transaction ("confirmation") page and the other pages to a receipt-first design (D42); (2) the ForteL2 address page shows little or no data — reproduced, root cause is a ~67-minute native / ~28-hour token discovery window (D43). Wave R1 = F6y ∥ F6z (file-disjoint). Wave R2 = F6aa ∥ F6ab ∥ F6ac, each adding CSS only in its own `src/styles/<page>.css`; R2 briefs are written at F6z's review, against the merged foundation, not now. Ownership: F6y owns `src/chain/transfers.ts` (+ test, + new `src/chain/*` helpers) and `AddressDetailPage.tsx` loading/coverage states only; F6z owns `src/index.css`, `src/components/AppShell.tsx`, new `src/components/ui/*`, `docs/DESIGN.md`. F6aa owns `TransactionPage.tsx`; F6ab owns `AddressDetailPage.tsx`, `TransferTable`, `BalanceChips`, `CounterpartySummary`; F6ac owns `BlockPage`, `OverviewPage`, `EntityPage`, `GraphPage` (and must not edit F6ab's components).
+
+**F6y verification record (2026-11-19).** PR #61 at `64c9a25`, base `ea0d785` = main, 4 files, all on the allowlist; `LOG_CHUNK` and the Base/Amoy path untouched. Reviewer re-ran the gate in an isolated clone: **238 passed / 33 files**, +8/−1 tests; the removed test encoded the 2,000-block scan. Live, no mocks, real `getTransfers` against `fortel2-sequencer-rpc.onrender.com`: the reported address went from **3 rows / 37 s / 2,164 requests** on main to **13 of 13 / 14.6 s / 302 POSTs (702 calls)**. ACME US Inc on ForteL2 returned 18 rows back to block 3,569. A dead RPC gives an error state, not an empty table. **Gap found by mutation:** removing the `found !== expected` backstop, or the pivot-exhausted `ARCHIVE_GAP`, leaves the suite green. The code is correct today but unpinned, so F6ab's brief must add those tests (it may append to `src/chain/transfers.test.ts`). D44 retired unused.
+
+**F6ad — Semgrep passes while scanning nothing (found 2026-11-19).** The hosted Semgrep log shows `semgrep-core exited with -11`, then "Semgrep will succeed because there were no blocking findings". This happened on every run on 2026-11-19 (F6y `d756901` and `64c9a25`, F6z `f0eef7b` and `40f1406`, docs `f7e94c8`). The last run without the crash was `e4f9b48` on 2026-10-27. The §0 "all four scanners green" claim is therefore **false since at least 2026-11-19**. Scope: `.github/workflows/**` only. Pin a Semgrep version that doesn't crash, or fix the trigger, and make an engine error fail the job (`--no-suppress-errors` or equivalent). Prove both by showing a run that scans and a deliberately broken run that goes red. Model: cheap-to-strong. It's mechanical, but the failure mode is silent, so it needs proof-of-red. Runs parallel with anything: no `src/` overlap.
 
 **Former next-free line (kept for history): `F6y`.** `F6u`–`F6x` are all merged — the first two were specced in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md) but not yet dispatched, which is exactly
@@ -451,7 +456,7 @@ scrolled away.
 | F6v — block detail page | strong | ✅ done | ForteL2 host | merged #51 (`330fa1a`); reviewer re-ran the gate in isolation (206/0), re-applied the cited cache-key mutation (3 tests red, the ones named), and probed the real navigation-order flow live — F6u's header-only cache primed, then `getBlockDetail` returned full tx objects. Both dispatch traps (`block-full:` key, deposit-tx `type: undefined`) were handled; worker exceeded spec with a defensive throw on hash-only transactions and canonical dedup of zero-padded block numbers |
 | F6w — MCP `get_transaction` | strong | ✅ done | ForteL2 host | merged #53 (`fe94964`); reviewer re-ran the gate in isolation (213/0), re-applied the cited not_found→toolError mutation (red, exact quoted error), and probed the booted Express app over real HTTP — golden fixture to the wei, structured not_found, uppercase-hash normalisation, Base Sepolia, unauthenticated 401. Transport-failure branch verified at handler level (mocked), not live — every endpoint here is reachable by construction |
 | F6x — MCP `get_block` | strong | ✅ done | ForteL2 host | merged #55 (`5de764f`); reviewer re-ran the gate in isolation (221/0), re-applied the cited `?? null` mutation (red, exact quoted error), recomputed the Base tx count from source (39, exact), and probed the booted server live — plus four edges the handoff did not claim: uppercase block hash, a deposit-only block, **genesis block 0**, and a zero-padded number. All green. Worker branched from live `main` rather than the prompt's stale SHA and disclosed it |
-| F6y — ForteL2 full-history address view | strongest | R1, parallel with F6z | any (public read RPC) | dispatched 2026-11-19 from `ea0d785`. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
+| F6y — ForteL2 full-history address view | strongest | ✅ approved | any (public read RPC) | PR #61 approved 2026-11-19 — see verification record. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
 | F6z — receipt design foundation | strong | R1, parallel with F6y | any | dispatched 2026-11-19 from `ea0d785`. Operator approves look on the PR before R2 |
 | F6aa — tx receipt page | strongest | R2, after F6z | ForteL2 host preferred | not dispatched. Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
 | F6ab — address page | strong | R2, after F6y + F6z | any | not dispatched |
