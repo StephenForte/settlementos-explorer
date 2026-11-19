@@ -148,7 +148,7 @@ F6v  ForteL2 block detail page          ✅ merged #51 — D35 retired unused
 F6w  MCP get_transaction tool           ✅ merged #53 — D36 retired unused
 F6x  MCP get_block tool                 ✅ merged #55 — D37 retired unused
 F6y  ForteL2 full-history address view   ✅ merged #61 (`8c54d7d`) — D43; D44 retired unused
-F6z  receipt design foundation          ⏳ wave R1 — D42 (D45 reserved for F6z)
+F6z  receipt design foundation          ✅ approved #62 on code; palette awaits operator — D42, D47; D45 retired unused
 F6aa tx receipt page ("confirmation")   ⏸ wave R2, after F6z merges + operator approves look
 F6ab address page redesign              ⏸ wave R2, after F6y and F6z merge
 F6ac block / overview / entity redesign ⏸ wave R2, after F6z merges
@@ -457,7 +457,7 @@ scrolled away.
 | F6w — MCP `get_transaction` | strong | ✅ done | ForteL2 host | merged #53 (`fe94964`); reviewer re-ran the gate in isolation (213/0), re-applied the cited not_found→toolError mutation (red, exact quoted error), and probed the booted Express app over real HTTP — golden fixture to the wei, structured not_found, uppercase-hash normalisation, Base Sepolia, unauthenticated 401. Transport-failure branch verified at handler level (mocked), not live — every endpoint here is reachable by construction |
 | F6x — MCP `get_block` | strong | ✅ done | ForteL2 host | merged #55 (`5de764f`); reviewer re-ran the gate in isolation (221/0), re-applied the cited `?? null` mutation (red, exact quoted error), recomputed the Base tx count from source (39, exact), and probed the booted server live — plus four edges the handoff did not claim: uppercase block hash, a deposit-only block, **genesis block 0**, and a zero-padded number. All green. Worker branched from live `main` rather than the prompt's stale SHA and disclosed it |
 | F6y — ForteL2 full-history address view | strongest | ✅ approved | any (public read RPC) | PR #61 approved 2026-11-19 — see verification record. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
-| F6z — receipt design foundation | strong | R1, parallel with F6y | any | dispatched 2026-11-19 from `ea0d785`. Operator approves look on the PR before R2 |
+| F6z — receipt design foundation | strong | ✅ approved on code | any | PR #62 at `40f1406` reviewed 2026-11-19: merged-with-main gate 261/43, contrast recomputed independently (min 4.78 / 4.67), dark media block and `[data-theme=dark]` diffed with zero drift, prod bundle free of demo code, local Semgrep 0 findings on 24 files. `index.html` boot script was a brief-scope defect, not creep (D47). Waiting on operator palette sign-off |
 | F6ad — Semgrep fails on engine error + scans again | strong | any time, parallel with everything (CI-only) | any | dispatched 2026-11-19 from `8c54d7d`. Strong rather than cheap: the fix must not just flip `--no-suppress-errors` (that turns every PR red while the crash persists), and the proof needs a planted finding plus a deliberate red |
 | F6aa — tx receipt page | strongest | R2, after F6z | ForteL2 host preferred | not dispatched. Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
 | F6ab — address page | strong | R2, after F6y + F6z | any | not dispatched |
