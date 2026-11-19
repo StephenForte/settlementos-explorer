@@ -147,11 +147,20 @@ F6u  ForteL2 transaction detail page    ✅ merged #49 (D33, D34)
 F6v  ForteL2 block detail page          ✅ merged #51 — D35 retired unused
 F6w  MCP get_transaction tool           ✅ merged #53 — D36 retired unused
 F6x  MCP get_block tool                 ✅ merged #55 — D37 retired unused
+F6y  ForteL2 full-history address view   ⏳ wave R1 — D43 (D44 reserved for F6y)
+F6z  receipt design foundation          ⏳ wave R1 — D42 (D45 reserved for F6z)
+F6aa tx receipt page ("confirmation")   ⏸ wave R2, after F6z merges + operator approves look
+F6ab address page redesign              ⏸ wave R2, after F6y and F6z merge
+F6ac block / overview / entity redesign ⏸ wave R2, after F6z merges
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
 
-**Next free identifier: `F6y`.** `F6u`–`F6x` are all merged — the first two were specced in
+**Next free identifier: `F6ad`** (D42: ids after `F6z` continue `F6aa`, `F6ab`, …). `F6y`–`F6ac` are assigned to the 2026-11-19 receipt-redesign wave below.
+
+**Receipt-redesign wave (2026-11-19).** Two operator issues: (1) revamp the transaction ("confirmation") page and the other pages to a receipt-first design (D42); (2) the ForteL2 address page shows little or no data — reproduced, root cause is a ~67-minute native / ~28-hour token discovery window (D43). Wave R1 = F6y ∥ F6z (file-disjoint). Wave R2 = F6aa ∥ F6ab ∥ F6ac, each adding CSS only in its own `src/styles/<page>.css`; R2 briefs are written at F6z's review, against the merged foundation, not now. Ownership: F6y owns `src/chain/transfers.ts` (+ test, + new `src/chain/*` helpers) and `AddressDetailPage.tsx` loading/coverage states only; F6z owns `src/index.css`, `src/components/AppShell.tsx`, new `src/components/ui/*`, `docs/DESIGN.md`. F6aa owns `TransactionPage.tsx`; F6ab owns `AddressDetailPage.tsx`, `TransferTable`, `BalanceChips`, `CounterpartySummary`; F6ac owns `BlockPage`, `OverviewPage`, `EntityPage`, `GraphPage` (and must not edit F6ab's components).
+
+**Former next-free line (kept for history): `F6y`.** `F6u`–`F6x` are all merged — the first two were specced in
 [`TX-VIEWER-PRD.md`](TX-VIEWER-PRD.md) but not yet dispatched, which is exactly
 the state the pre-assignment rule exists to protect. Assign from here; do not
 grep for the highest and add one. Parallel workers that each derive their own ID
@@ -442,6 +451,11 @@ scrolled away.
 | F6v — block detail page | strong | ✅ done | ForteL2 host | merged #51 (`330fa1a`); reviewer re-ran the gate in isolation (206/0), re-applied the cited cache-key mutation (3 tests red, the ones named), and probed the real navigation-order flow live — F6u's header-only cache primed, then `getBlockDetail` returned full tx objects. Both dispatch traps (`block-full:` key, deposit-tx `type: undefined`) were handled; worker exceeded spec with a defensive throw on hash-only transactions and canonical dedup of zero-padded block numbers |
 | F6w — MCP `get_transaction` | strong | ✅ done | ForteL2 host | merged #53 (`fe94964`); reviewer re-ran the gate in isolation (213/0), re-applied the cited not_found→toolError mutation (red, exact quoted error), and probed the booted Express app over real HTTP — golden fixture to the wei, structured not_found, uppercase-hash normalisation, Base Sepolia, unauthenticated 401. Transport-failure branch verified at handler level (mocked), not live — every endpoint here is reachable by construction |
 | F6x — MCP `get_block` | strong | ✅ done | ForteL2 host | merged #55 (`5de764f`); reviewer re-ran the gate in isolation (221/0), re-applied the cited `?? null` mutation (red, exact quoted error), recomputed the Base tx count from source (39, exact), and probed the booted server live — plus four edges the handoff did not claim: uppercase block hash, a deposit-only block, **genesis block 0**, and a zero-padded number. All green. Worker branched from live `main` rather than the prompt's stale SHA and disclosed it |
+| F6y — ForteL2 full-history address view | strongest | R1, parallel with F6z | any (public read RPC) | dispatched 2026-11-19 from `ea0d785`. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
+| F6z — receipt design foundation | strong | R1, parallel with F6y | any | dispatched 2026-11-19 from `ea0d785`. Operator approves look on the PR before R2 |
+| F6aa — tx receipt page | strongest | R2, after F6z | ForteL2 host preferred | not dispatched. Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
+| F6ab — address page | strong | R2, after F6y + F6z | any | not dispatched |
+| F6ac — block / overview / entity | strong | R2, after F6z | any | not dispatched. OverviewPage dep-array rule (§2) still binds |
 
 F6u is strongest-tier despite being "just a page": it publishes a **URL contract that
 SettlementOS will hardcode** (§4 of the PRD) and a **money figure** (the L2 execution
