@@ -149,7 +149,7 @@ F6w  MCP get_transaction tool           ✅ merged #53 — D36 retired unused
 F6x  MCP get_block tool                 ✅ merged #55 — D37 retired unused
 F6y  ForteL2 full-history address view   ✅ merged #61 (`8c54d7d`) — D43; D44 retired unused
 F6z  receipt design foundation          ✅ merged #62 (`603ab35`), palette approved by operator 2026-11-19 — D42, D47; D45 retired unused
-F6aa tx receipt page ("confirmation")   ✅ approved — PR #64 (`6b880ca`), awaiting operator merge; D48 written
+F6aa tx receipt page ("confirmation")   ✅ merged #64 (`92312c6`); D48 written
 F6ab address page redesign              ⏳ wave R2, dispatched 2026-11-19 from `603ab35` (D49 reserved)
 F6ac block / overview / entity redesign ⏳ wave R2, dispatched 2026-11-19 from `603ab35` (D50 reserved)
 F6ad Semgrep silently passes on a crash  ⏳ dispatched 2026-11-19 from `8c54d7d` (D46 reserved)
@@ -461,7 +461,7 @@ scrolled away.
 | F6y — ForteL2 full-history address view | strongest | ✅ approved | any (public read RPC) | PR #61 approved 2026-11-19 — see verification record. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
 | F6z — receipt design foundation | strong | ✅ approved on code | any | PR #62 at `40f1406` reviewed 2026-11-19: merged-with-main gate 261/43, contrast recomputed independently (min 4.78 / 4.67), dark media block and `[data-theme=dark]` diffed with zero drift, prod bundle free of demo code, local Semgrep 0 findings on 24 files. `index.html` boot script was a brief-scope defect, not creep (D47). Waiting on operator palette sign-off |
 | F6ad — Semgrep fails on engine error + scans again | strong | any time, parallel with everything (CI-only) | any | dispatched 2026-11-19 from `8c54d7d`. Strong rather than cheap: the fix must not just flip `--no-suppress-errors` (that turns every PR red while the crash persists), and the proof needs a planted finding plus a deliberate red |
-| F6aa — tx receipt page | strongest | R2, parallel with F6ab/F6ac | any (public read RPC) | ✅ approved 2026-11-19, PR #64 — see verification record. Trap measured by planner: on ForteL2 the sender's ETH drop = value + L2 fee + **L1 data fee** (tx `0x7ca9800e…`: 2,250,294,037 wei drop; without `l1Fee` 100,597 wei short). Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
+| F6aa — tx receipt page | strongest | R2, parallel with F6ab/F6ac | any (public read RPC) | ✅ merged 2026-11-19 as #64 (`92312c6`) — see verification record. Trap measured by planner: on ForteL2 the sender's ETH drop = value + L2 fee + **L1 data fee** (tx `0x7ca9800e…`: 2,250,294,037 wei drop; without `l1Fee` 100,597 wei short). Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
 | F6ab — address page | strong | R2, parallel with F6aa/F6ac | any | dispatched 2026-11-19 from `603ab35`; also pins F6y's coverage backstop with mutation-proven tests |
 | F6ac — block / overview / entity | strong | R2, parallel with F6aa/F6ab | any | dispatched 2026-11-19 from `603ab35`. OverviewPage dep-array rule (§2) still binds |
 
