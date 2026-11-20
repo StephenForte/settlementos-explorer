@@ -147,6 +147,15 @@ describe('BlockPage', () => {
     )
   })
 
+  it('does not call a block one behind the tip final', async () => {
+    mockedGet.mockResolvedValue(foundLookup({ number: 99n, head: 100n }))
+    renderBlock('/fortel2-sepolia/block/99')
+
+    expect(await screen.findByText('2 confirmations')).toBeInTheDocument()
+    expect(screen.queryByText('Final')).not.toBeInTheDocument()
+    expect(screen.getByText('Confirmed')).toBeInTheDocument()
+  })
+
   it('renders a deposit tx with type undefined as a real row without the string undefined', async () => {
     mockedGet.mockResolvedValue(foundLookup())
     renderBlock('/fortel2-sepolia/block/979595')

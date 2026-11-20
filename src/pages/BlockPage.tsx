@@ -466,7 +466,7 @@ function finalityFor(block: FoundBlockLookup): {
   const word = confirmations === 1n ? 'confirmation' : 'confirmations'
   return {
     status: 'success',
-    label: 'Final',
+    label: 'Confirmed',
     note: `${confirmations.toString()} ${word}`,
   }
 }
