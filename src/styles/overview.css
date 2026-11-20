@@ -42,6 +42,20 @@
   line-height: 1.35;
 }
 
+.overview-address {
+  cursor: pointer;
+  border-radius: var(--radius-card);
+}
+
+.overview-address:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.overview-address:hover .row-hint {
+  color: var(--link-teal);
+}
+
 .overview-address .receipt-title {
   overflow-wrap: anywhere;
 }
