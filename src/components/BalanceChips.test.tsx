@@ -48,6 +48,16 @@ describe('BalanceChips', () => {
     expect(screen.queryByText(/Set RPC/i)).not.toBeInTheDocument()
   })
 
+  it('shows the native balance first as a large figure when asked', () => {
+    render(<BalanceChips balances={balances} layout="figures" />)
+    const native = screen.getByText('0.001')
+    const token = screen.getByText('Unavailable')
+    expect(native.compareDocumentPosition(token) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('ETH')).toBeInTheDocument()
+    expect(screen.getAllByText('mockUSDC').length).toBeGreaterThan(0)
+    expect(screen.queryByText('0.001 ETH')).not.toBeInTheDocument()
+  })
+
   it('offers an RPC override control when networkId is set and a chip is unavailable', () => {
     const onRpcOverrideChange = vi.fn()
     render(
