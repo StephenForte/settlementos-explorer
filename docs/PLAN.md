@@ -151,7 +151,7 @@ F6y  ForteL2 full-history address view   ✅ merged #61 (`8c54d7d`) — D43; D44
 F6z  receipt design foundation          ✅ merged #62 (`603ab35`), palette approved by operator 2026-11-19 — D42, D47; D45 retired unused
 F6aa tx receipt page ("confirmation")   ✅ merged #64 (`92312c6`); D48 written
 F6ab address page redesign              ✅ merged #66 (`7e6f25a`); D49 written
-F6ac block / overview / entity redesign ✅ approved — PR #65 (`c88ad60`), awaiting operator merge; D50 retired unused
+F6ac block / overview / entity redesign ✅ merged #65 (`92c7518`); D50 retired unused
 F6ad Semgrep silently passes on a crash  ⏳ dispatched 2026-11-19 from `8c54d7d` (D46 reserved)
 
 F6e  RETIRED — never dispatched, do not reuse
@@ -467,7 +467,7 @@ scrolled away.
 | F6ad — Semgrep fails on engine error + scans again | strong | any time, parallel with everything (CI-only) | any | dispatched 2026-11-19 from `8c54d7d`. Strong rather than cheap: the fix must not just flip `--no-suppress-errors` (that turns every PR red while the crash persists), and the proof needs a planted finding plus a deliberate red |
 | F6aa — tx receipt page | strongest | R2, parallel with F6ab/F6ac | any (public read RPC) | ✅ merged 2026-11-19 as #64 (`92312c6`) — see verification record. Trap measured by planner: on ForteL2 the sender's ETH drop = value + L2 fee + **L1 data fee** (tx `0x7ca9800e…`: 2,250,294,037 wei drop; without `l1Fee` 100,597 wei short). Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
 | F6ab — address page | strong | R2, parallel with F6aa/F6ac | any | ✅ merged 2026-11-19 as #66 (`7e6f25a`) — see verification record; also pins F6y's coverage backstop with mutation-proven tests |
-| F6ac — block / overview / entity | strong | R2, parallel with F6aa/F6ab | any | ✅ approved 2026-11-20 after one send-back, PR #65 at `c88ad60` — see verification record. OverviewPage dep-array rule (§2) still binds |
+| F6ac — block / overview / entity | strong | R2, parallel with F6aa/F6ab | any | ✅ merged 2026-11-20 as #65 (`92c7518`) after one send-back — see verification record. OverviewPage dep-array rule (§2) still binds |
 
 F6u is strongest-tier despite being "just a page": it publishes a **URL contract that
 SettlementOS will hardcode** (§4 of the PRD) and a **money figure** (the L2 execution
