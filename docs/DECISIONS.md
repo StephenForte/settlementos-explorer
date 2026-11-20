@@ -1243,3 +1243,23 @@ highest number here.
   are unchanged. The coverage message keeps F6y's wording and conditions and
   now sits above the receipt card.
 
+### D46: hosted Semgrep pins its versions and fails on engine errors
+- Status: APPROVED
+- Type: infrastructure
+- Date: 2026-11-20
+- Source: F6ad, PR #63 (`d534349`), planner review
+- Detail: The Semgrep SAST job installs `semgrep==1.186.0` on Python `3.14`
+  and runs `semgrep ci --no-suppress-errors`, so an engine crash fails the
+  check instead of passing with nothing scanned. The hosted Pro engine and
+  rule policy stay as they were. Python is pinned because the setup action's
+  `3.x` had moved to 3.15.2, where Semgrep Pro 1.182.1, 1.185.0 and 1.186.0
+  all segfaulted (`semgrep-core exited with -11`), including with one worker.
+  The same version and fixture completed on Python 3.14.10. The engine's
+  internal fault is unconfirmed. Bumping either pin needs a run whose log
+  shows a TypeScript row and no `exited with` line.
+- Evidence: crash run 44634334390 (3.x, exit 2), comparison runs
+  44634447929 / 44634648362 / 44634843295 (all exit 2), pass 44634941884
+  (3.14.10). Planner full-repository dispatch 44649049181 on `d534349`
+  scanned 118 files (101 TypeScript) with 1,900 Pro rules and no crash:
+  17 findings, 0 blocking.
+
