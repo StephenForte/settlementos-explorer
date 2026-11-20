@@ -152,7 +152,7 @@ F6z  receipt design foundation          ✅ merged #62 (`603ab35`), palette appr
 F6aa tx receipt page ("confirmation")   ✅ merged #64 (`92312c6`); D48 written
 F6ab address page redesign              ✅ merged #66 (`7e6f25a`); D49 written
 F6ac block / overview / entity redesign ✅ merged #65 (`92c7518`); D50 retired unused
-F6ad Semgrep silently passes on a crash  ✅ approved — PR #63 (`d534349`), awaiting operator merge; D46 written
+F6ad Semgrep silently passes on a crash  ✅ merged #63 (`16ba139`); D46 written
 
 F6e  RETIRED — never dispatched, do not reuse
 ```
@@ -466,7 +466,7 @@ scrolled away.
 | F6x — MCP `get_block` | strong | ✅ done | ForteL2 host | merged #55 (`5de764f`); reviewer re-ran the gate in isolation (221/0), re-applied the cited `?? null` mutation (red, exact quoted error), recomputed the Base tx count from source (39, exact), and probed the booted server live — plus four edges the handoff did not claim: uppercase block hash, a deposit-only block, **genesis block 0**, and a zero-padded number. All green. Worker branched from live `main` rather than the prompt's stale SHA and disclosed it |
 | F6y — ForteL2 full-history address view | strongest | ✅ approved | any (public read RPC) | PR #61 approved 2026-11-19 — see verification record. Strongest: the failure mode is silent — an incomplete history renders as a plausible short table (D43) |
 | F6z — receipt design foundation | strong | ✅ approved on code | any | PR #62 at `40f1406` reviewed 2026-11-19: merged-with-main gate 261/43, contrast recomputed independently (min 4.78 / 4.67), dark media block and `[data-theme=dark]` diffed with zero drift, prod bundle free of demo code, local Semgrep 0 findings on 24 files. `index.html` boot script was a brief-scope defect, not creep (D47). Waiting on operator palette sign-off |
-| F6ad — Semgrep fails on engine error + scans again | strong | any time, parallel with everything (CI-only) | any | ✅ approved 2026-11-20, PR #63 — see verification record. Strong rather than cheap: the fix must not just flip `--no-suppress-errors` (that turns every PR red while the crash persists), and the proof needs a planted finding plus a deliberate red |
+| F6ad — Semgrep fails on engine error + scans again | strong | any time, parallel with everything (CI-only) | any | ✅ merged 2026-11-20 as #63 (`16ba139`) — see verification record. Strong rather than cheap: the fix must not just flip `--no-suppress-errors` (that turns every PR red while the crash persists), and the proof needs a planted finding plus a deliberate red |
 | F6aa — tx receipt page | strongest | R2, parallel with F6ab/F6ac | any (public read RPC) | ✅ merged 2026-11-19 as #64 (`92312c6`) — see verification record. Trap measured by planner: on ForteL2 the sender's ETH drop = value + L2 fee + **L1 data fee** (tx `0x7ca9800e…`: 2,250,294,037 wei drop; without `l1Fee` 100,597 wei short). Strongest: money figures (ledger must reconcile to the wei) and the §4 PRD URL contract |
 | F6ab — address page | strong | R2, parallel with F6aa/F6ac | any | ✅ merged 2026-11-19 as #66 (`7e6f25a`) — see verification record; also pins F6y's coverage backstop with mutation-proven tests |
 | F6ac — block / overview / entity | strong | R2, parallel with F6aa/F6ab | any | ✅ merged 2026-11-20 as #65 (`92c7518`) after one send-back — see verification record. OverviewPage dep-array rule (§2) still binds |
