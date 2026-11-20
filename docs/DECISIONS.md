@@ -1198,3 +1198,31 @@ highest number here.
   accepts only the literal values `light` and `dark`. The app sends no
   Content-Security-Policy today. If one is ever added, this script needs a hash
   or nonce, or the toggle will flash.
+
+### D48: the transaction receipt reconciles against chain state, or says it did not
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-11-19
+- Source: F6aa, PR #64 (`6b880ca`), planner review
+- Detail: The sender ledger lists value sent (zero when the tx reverted), the
+  `L2 execution fee` (gasUsed × effectiveGasPrice) and, when the receipt
+  carries `l1Fee`, an `L1 data fee` row. A network whose receipt has no
+  `l1Fee` gets no such row; absence is never shown as zero. The ledger total is
+  compared with an independent figure: the sender's balance at the block minus
+  its balance at the parent, both read by block hash with
+  `requireCanonical: true` (EIP-1898). The comparison is attempted only when
+  the sender has exactly one top-level tx in the block, no top-level tx in the
+  block sends it value, no withdrawal credits it, and it is not the fee
+  recipient. If the observed drop is smaller than the ledger, an internal
+  credit may explain it, so the page says "Not checked against balance"
+  instead of alerting. A larger observed drop is shown as a mismatch. Missing
+  archive state, hash-only block bodies or an RPC error also give "Not checked
+  against balance". The ledger's own sum is never used as the expected total.
+  The view does not trace internal calls.
+- Evidence: planner recomputed from raw RPC (eth_getTransactionReceipt plus
+  eth_getBalance at block−1 and block). ForteL2 0x66ec9ccd… 11,499,509,038 wei,
+  0x8631394a… 13,603,563,929 wei, Base Sepolia reverted 0x77d492ec…
+  10,524,641,224,491 wei, all exact. On the two settlement txs the L1 data
+  fee is over 99% of the cost. The block-hash `eth_getBalance` form works on
+  the ForteL2, Base Sepolia and Polygon Amoy RPCs.
+
