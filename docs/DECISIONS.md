@@ -1226,3 +1226,20 @@ highest number here.
   fee is over 99% of the cost. The block-hash `eth_getBalance` form works on
   the ForteL2, Base Sepolia and Polygon Amoy RPCs.
 
+### D49: the address page shows self-sends as Self and names known methods
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-11-19
+- Source: F6ab, PR #66 (`f129582`), planner review
+- Detail: On the address page, a transfer whose from and to both equal the
+  viewed address shows a neutral "Self" direction chip (`--surface-soft` /
+  `--ink`) with the counterparty "itself", instead of "Out" to its own
+  address. A method selector that matches a function in `src/config/abis.ts`
+  shows the function name. Any other selector shows "Contract call", with the
+  raw selector in a TermTooltip. The address page renders activity as a
+  stacked list. `TransferTable` and `BalanceChips` take these as optional
+  props (`presentation`, `markSelf`, `decodeMethods`, `layout`). Their
+  defaults keep the old table, "Out", raw selector and chips, so other callers
+  are unchanged. The coverage message keeps F6y's wording and conditions and
+  now sits above the receipt card.
+
