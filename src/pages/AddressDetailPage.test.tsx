@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getTransfers } from '../chain/transfers'
+import { getBalances } from '../chain/balances'
+import { getTransfers, type NativeTxEvent } from '../chain/transfers'
 import { AddressDetailPage } from './AddressDetailPage'
 
 vi.mock('../chain/balances', () => ({
@@ -31,6 +32,24 @@ vi.mock('../chain/transfers', async (importOriginal) => {
 })
 
 const mockedGetTransfers = vi.mocked(getTransfers)
+const mockedGetBalances = vi.mocked(getBalances)
+
+const selfNative = (overrides: Partial<NativeTxEvent> = {}): NativeTxEvent => ({
+  kind: 'native',
+  networkId: 'fortel2-sepolia',
+  from: '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2',
+  to: '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2',
+  fromLabel: '0xf8b8…8ae2',
+  toLabel: '0xf8b8…8ae2',
+  amountRaw: 0n,
+  amountFormatted: '0',
+  symbol: 'ETH',
+  txHash: '0xselfsend',
+  blockNumber: 9,
+  timestamp: 1_700_000_090,
+  method: '0x524e5231',
+  ...overrides,
+})
 
 function renderAddress(path: string) {
   return render(
@@ -47,6 +66,19 @@ function renderAddress(path: string) {
 
 describe('AddressDetailPage', () => {
   beforeEach(() => {
+    mockedGetBalances.mockReset()
+    mockedGetBalances.mockResolvedValue({
+      networkId: 'base-sepolia',
+      address: '0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+      native: {
+        symbol: 'ETH',
+        raw: 1n,
+        formatted: '0.001',
+        status: 'ok',
+      },
+      tokens: [],
+    })
+    mockedGetTransfers.mockReset()
     mockedGetTransfers.mockResolvedValue({
       items: [],
       source: 'explorer-api',
@@ -173,5 +205,92 @@ describe('AddressDetailPage', () => {
     expect(
       screen.queryByText(/Explorer \/ RPC history failed/i),
     ).not.toBeInTheDocument()
+  })
+
+  it('puts a short sent-count coverage message above the activity list', async () => {
+    mockedGetTransfers.mockResolvedValue({
+      items: [],
+      source: 'rpc-logs',
+      truncated: false,
+      coverage: {
+        sent: { found: 0, expected: 13 },
+        gaps: ['some historical account states were unavailable from the RPC'],
+      },
+    })
+
+    renderAddress(
+      '/fortel2-sepolia/address/0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2',
+    )
+
+    const banner = await screen.findByTestId('coverage-banner')
+    expect(banner).toHaveTextContent('Partial history. Showing 0 of 13 sent transactions.')
+    expect(banner).toHaveTextContent(
+      'Some historical account states were unavailable from the RPC.',
+    )
+    const activity = screen.getByRole('heading', { name: 'Activity' })
+    expect(banner.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(banner.closest('.details-panel')).toBeNull()
+    expect(screen.queryByText(/No transactions found/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/No recent transactions/i)).not.toBeInTheDocument()
+  })
+
+  it('reads a self-send as Self and itself, and explains an empty counterparty list', async () => {
+    mockedGetTransfers.mockResolvedValue({
+      items: [selfNative()],
+      source: 'rpc-logs',
+      truncated: false,
+      coverage: {
+        sent: { found: 1, expected: 2 },
+        gaps: ['the sent transaction count differs from the account nonce'],
+      },
+    })
+
+    renderAddress(
+      '/fortel2-sepolia/address/0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2',
+    )
+
+    expect(await screen.findByText('Self')).toBeInTheDocument()
+    expect(screen.getByText('itself')).toBeInTheDocument()
+    expect(screen.queryByText('Out')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Contract call' })).toBeInTheDocument()
+    expect(screen.getByRole('tooltip')).toHaveTextContent('0x524e5231')
+    expect(screen.getByText(/0 ETH/)).toBeInTheDocument()
+    expect(screen.getByTestId('coverage-banner')).toHaveTextContent(
+      'Showing 1 of 2 sent transactions.',
+    )
+    expect(screen.getByTestId('coverage-banner')).toHaveTextContent(
+      'The sent transaction count differs from the account nonce.',
+    )
+    expect(
+      screen.getByText(/Self-sends are the only activity, so they are left out of counterparties/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/No counterparties yet/i)).not.toBeInTheDocument()
+  })
+
+  it('shows native rows that arrive before history finishes', async () => {
+    mockedGetTransfers.mockImplementation(async (_network, _address, onProgress) => {
+      onProgress?.([selfNative()])
+      return new Promise(() => {})
+    })
+
+    renderAddress(
+      '/fortel2-sepolia/address/0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2',
+    )
+
+    expect(await screen.findByText('Self')).toBeInTheDocument()
+    expect(screen.getByText(/Loading transactions/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('coverage-banner')).not.toBeInTheDocument()
+  })
+
+  it('keeps the balance error and RPC override form', async () => {
+    mockedGetBalances.mockRejectedValue(new Error('rpc down'))
+
+    renderAddress(
+      '/base-sepolia/address/0xFf489a6d49D68f9D0B564089C545C0768A33205f',
+    )
+
+    expect(await screen.findByText(/RPC unavailable: rpc down/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Set RPC for Base Sepolia/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 })

@@ -103,6 +103,8 @@ export interface MinedTxLookup extends TxShared {
   gasUsed: bigint
   effectiveGasPrice: bigint | null
   l2ExecutionFeeWei: bigint | null
+  l1DataFeeWei: bigint | null
+  senderBalanceChangeWei: bigint | null
   contractAddress: Address | null
   logs: DecodedTxLog[]
 }
@@ -323,14 +325,66 @@ async function fetchTransactionDetail(
     throw err
   }
 
-  const block = await cached(`block:${networkId}:${tx.blockNumber}`, () =>
-    client.getBlock({ blockNumber: tx.blockNumber }),
-  )
-  const head = await client.getBlockNumber()
+  const [block, head] = await Promise.all([
+    client.getBlock({ blockHash: tx.blockHash, includeTransactions: true }),
+    client.getBlockNumber(),
+  ])
   const confirmations = Number(head - tx.blockNumber + 1n)
   const effectiveGasPrice = receipt.effectiveGasPrice ?? null
   const l2ExecutionFeeWei =
     effectiveGasPrice != null ? receipt.gasUsed * effectiveGasPrice : null
+
+  // The generic viem formatter retains OP fields as RPC hex; Base's OP
+  // formatter converts this field to bigint. Absence is distinct from zero.
+  const l1Fee = 'l1Fee' in receipt ? receipt.l1Fee : null
+  const l1DataFeeWei =
+    typeof l1Fee === 'string' || typeof l1Fee === 'bigint'
+      ? BigInt(l1Fee)
+      : null
+  const sender = tx.from.toLowerCase()
+  // Some RPCs return only transaction hashes even when full objects were requested.
+  const outgoing = block.transactions?.every(
+    (t) => typeof t === 'object' && t.from,
+  )
+    ? block.transactions.filter((t) => t.from.toLowerCase() === sender)
+    : []
+
+  let senderBalanceChangeWei: bigint | null = null
+  if (
+    tx.blockNumber > 0n &&
+    outgoing.length === 1 &&
+    outgoing[0].hash === tx.hash &&
+    !block.transactions.some(
+      (t) => t.to?.toLowerCase() === sender && t.value > 0n,
+    ) &&
+    !block.withdrawals?.some(
+      (w) => w.address.toLowerCase() === sender && BigInt(w.amount) > 0n,
+    ) &&
+    block.miner?.toLowerCase() !== sender
+  ) {
+    try {
+      // Pin both state reads to this block lineage, including across reorgs.
+      const balanceAt = (blockHash: Hash) =>
+        client.request({
+          method: 'eth_getBalance',
+          params: [tx.from, { blockHash, requireCanonical: true }],
+        })
+      const [before, after] = await Promise.all([
+        balanceAt(block.parentHash),
+        balanceAt(block.hash),
+      ])
+      const change = BigInt(after) - BigInt(before)
+      // An internal credit may be invisible in the top-level transactions.
+      // A smaller debit cannot be attributed to this receipt alone.
+      const debit =
+        (receipt.status === 'success' ? tx.value : 0n) +
+        (l2ExecutionFeeWei ?? 0n) +
+        (l1DataFeeWei ?? 0n)
+      if (change <= -debit) senderBalanceChangeWei = change
+    } catch {
+      // Archive state or block-hash selectors may be unavailable.
+    }
+  }
 
   return {
     status: 'mined',
@@ -351,6 +405,8 @@ async function fetchTransactionDetail(
     gasUsed: receipt.gasUsed,
     effectiveGasPrice,
     l2ExecutionFeeWei,
+    l1DataFeeWei,
+    senderBalanceChangeWei,
     contractAddress: receipt.contractAddress ?? null,
     logs: decodeReceiptLogs(networkId, receipt.logs),
   }

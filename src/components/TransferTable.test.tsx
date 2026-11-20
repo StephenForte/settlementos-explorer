@@ -84,6 +84,86 @@ describe('TransferTable', () => {
     ).toHaveLength(0)
   })
 
+  it('keeps Out for a self-send unless the address page opts in', () => {
+    const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
+    const selfSend: TimelineItem = {
+      kind: 'native',
+      networkId: 'fortel2-sepolia',
+      from: self,
+      to: self,
+      fromLabel: 'ACME US Inc',
+      toLabel: 'ACME US Inc',
+      amountRaw: 0n,
+      amountFormatted: '0',
+      symbol: 'ETH',
+      txHash: '0xselfsend',
+      blockNumber: 3,
+      timestamp: 1_700_000_200,
+      method: '0x70a08231',
+    }
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <TransferTable items={[selfSend]} self={self} networkId="fortel2-sepolia" />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Out')).toBeInTheDocument()
+    expect(screen.getByText('ACME US Inc')).toBeInTheDocument()
+    expect(screen.getByText(/Native ETH · 0x70a08231/)).toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <TransferTable
+          items={[selfSend]}
+          self={self}
+          networkId="fortel2-sepolia"
+          presentation="list"
+          markSelf
+          decodeMethods
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Self')).toBeInTheDocument()
+    expect(screen.getByText('itself')).toBeInTheDocument()
+    expect(screen.getByText(/Native ETH/)).toHaveTextContent('balanceOf')
+    expect(screen.getByText(/0 ETH/)).toBeInTheDocument()
+    expect(screen.queryByText('Out')).not.toBeInTheDocument()
+  })
+
+  it('names an unknown selector as a contract call and keeps the selector in a tooltip', () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    render(
+      <MemoryRouter>
+        <TransferTable
+          items={[
+            {
+              kind: 'native',
+              networkId: 'fortel2-sepolia',
+              from: self,
+              to: '0x5128889F20Ec13e0Be38b2BeBC568594159B652d',
+              fromLabel: self,
+              toLabel: 'Operator',
+              amountRaw: 0n,
+              amountFormatted: '0',
+              symbol: 'ETH',
+              txHash: '0xselector',
+              blockNumber: 4,
+              timestamp: 1_700_000_300,
+              method: '0x524e5231',
+            },
+          ]}
+          self={self}
+          networkId="fortel2-sepolia"
+          presentation="list"
+          decodeMethods
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('button', { name: 'Contract call' })).toBeInTheDocument()
+    expect(screen.getByRole('tooltip')).toHaveTextContent('0x524e5231')
+    expect(screen.getByText('Out')).toBeInTheDocument()
+  })
+
   it('shows empty state when there is no activity', () => {
     render(
       <MemoryRouter>

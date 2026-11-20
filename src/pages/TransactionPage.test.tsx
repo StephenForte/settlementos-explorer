@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatUnits } from 'viem'
@@ -46,6 +46,8 @@ function minedLookup(overrides: Partial<Extract<TxLookup, { status: 'mined' }>> 
     effectiveGasPrice,
     l2ExecutionFeeWei: gasUsed * effectiveGasPrice,
     contractAddress: null,
+    l1DataFeeWei: null,
+    senderBalanceChangeWei: null,
     logs: [
       {
         kind: 'erc20-transfer',
@@ -183,6 +185,63 @@ describe('TransactionPage', () => {
     expect(screen.getByText(`${independent} gwei`)).toBeInTheDocument()
     expect(screen.getByText('Success')).toBeInTheDocument()
     expect(screen.getByText('979595')).toBeInTheDocument()
+  })
+
+  it('reconciles the golden ForteL2 receipt to the independent balance delta', async () => {
+    const hash = '0x7ca9800e724c5c8bf5633d29e078192f2fb234737ecddcb120c32ff9d4d61be7'
+    mockedGet.mockResolvedValue(minedLookup({
+      hash, blockNumber: 3845842n, logs: [], l2ExecutionFeeWei: 2_250_193_440n,
+      l1DataFeeWei: 100_597n, senderBalanceChangeWei: 0x23861ed05c9ca3n - 0x23861f567d5fb8n,
+    }))
+    renderTx(`/fortel2-sepolia/tx/${hash}`)
+    expect(await screen.findByText('Sender total')).toBeInTheDocument()
+    expect(screen.getByText('Sender total').parentElement).toHaveTextContent('-0.000000002250294037 ETH')
+    expect(screen.getByText(/Matches the sender/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('labels an unattributable block balance as unchecked without a mismatch alert', async () => {
+    mockedGet.mockResolvedValue(minedLookup({ senderBalanceChangeWei: null }))
+    renderTx(`/fortel2-sepolia/tx/${HASH}`)
+    expect(await screen.findByText(/Not checked against balance/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('L1 data fee')).not.toBeInTheDocument()
+  })
+
+  it('shows a mismatch when ledger rows omit part of the observed balance debit', async () => {
+    mockedGet.mockResolvedValue(minedLookup({ value: 0n, l2ExecutionFeeWei: 30n,
+      l1DataFeeWei: null, senderBalanceChangeWei: -32n }))
+    renderTx(`/fortel2-sepolia/tx/${HASH}`)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Rows sum to -0.00000000000000003 ETH; expected -0.000000000000000032 ETH/)
+  })
+
+  it('nets every sender Transfer per contract, keeping unknown tokens in base units', async () => {
+    const token = { kind: 'erc20-transfer', address: UNKNOWN, token: undefined,
+      from: OPERATOR, fromLabel: 'Operator', to: ACME, toLabel: 'ACME US Inc',
+      amountFormatted: undefined, amountRaw: 100n } as const
+    mockedGet.mockResolvedValue(minedLookup({ logs: [
+      token, { ...token, from: ACME, to: OPERATOR, fromLabel: 'ACME US Inc', toLabel: 'Operator', amountRaw: 20n },
+      { ...token, to: OPERATOR, toLabel: 'Operator', amountRaw: 50n },
+      { ...token, address: ESCROW, amountRaw: 7n },
+      { ...token, from: TREASURY, amountRaw: 99n },
+    ] }))
+    renderTx(`/fortel2-sepolia/tx/${HASH}`)
+    const heading = await screen.findByRole('heading', { name: 'Sender token movements' })
+    const movements = within(heading.closest('section')!)
+    expect(movements.getByText(UNKNOWN.toLowerCase())).toBeInTheDocument()
+    expect(movements.getByText(/Self-transfer · 50/)).toBeInTheDocument()
+    expect(movements.getAllByText('Net movement').map(el => el.parentElement?.textContent))
+      .toEqual(['Net movement-80', 'Net movement-7'])
+  })
+
+  it('zeros reverted value but charges both fees', async () => {
+    mockedGet.mockResolvedValue(minedLookup({ value: 999n, receiptStatus: 'reverted',
+      l2ExecutionFeeWei: 30n, l1DataFeeWei: 2n, senderBalanceChangeWei: -32n, logs: [] }))
+    renderTx(`/fortel2-sepolia/tx/${HASH}`)
+    expect((await screen.findByText('Value sent')).parentElement).toHaveTextContent('0 ETH')
+    expect(screen.getByText('Sender total').parentElement).toHaveTextContent('-0.000000000000000032 ETH')
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('decodes PaymentSettled with labelled counterparties and leaves unknown logs raw', async () => {
