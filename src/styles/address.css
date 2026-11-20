@@ -1,0 +1,98 @@
+.address-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.address-page .page-split,
+.address-page .page-split-main,
+.address-page .page-split-side,
+.address-page .receipt-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.address-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  min-width: 0;
+}
+
+.address-identity .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.address-coverage-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-sm) var(--space-md);
+  min-width: 0;
+}
+
+.address-coverage-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.address-page .dir.self {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.address-page .activity-list,
+.address-page .party-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.address-page .activity-row,
+.address-page .party-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+}
+
+.address-page .activity-top,
+.address-page .party-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.address-page .activity-amount,
+.address-page .party-amount {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.address-page .activity-party,
+.address-page .activity-meta,
+.address-page .party-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.address-page .balance-figures {
+  min-width: 0;
+  max-width: 100%;
+}

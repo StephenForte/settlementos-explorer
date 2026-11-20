@@ -927,6 +927,33 @@ describe('aggregateFlows', () => {
   })
 })
 
+describe('nonce coverage when discovery finishes short', () => {
+  it('gaps when native discovery finds fewer sends than the nonce and nothing else is missing', async () => {
+    const self = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+    mockPublicClient.getBlockNumber.mockResolvedValue(10n)
+    mockPublicClient.getTransactionCount.mockImplementation(async ({ blockNumber }) =>
+      blockNumber >= 5n ? 2 : 0,
+    )
+    mockPublicClient.getBlock.mockImplementation(async ({ blockNumber } = {}) => ({
+      ...emptyBlock(blockNumber),
+      transactions: blockNumber === 5n
+        ? [{ hash: '0xonly-one', from: self, to: self, value: 0n, input: '0x' }]
+        : [],
+    }))
+
+    const result = await getTransfers('fortel2-sepolia', self)
+
+    expect(result.error).toBeUndefined()
+    expect(result.coverage).toEqual({
+      sent: { found: 1, expected: 2 },
+      gaps: ['the sent transaction count differs from the account nonce'],
+    })
+    // AddressDetailPage turns this coverage object into
+    // "Showing 1 of 2 sent transactions." plus the capitalized gap.
+    expect(result.coverage?.sent).toEqual({ found: 1, expected: 2 })
+  })
+})
+
 describe('counterpartySummary', () => {
   it('aggregates in/out totals per counterparty', () => {
     const self = '0xFf489a6d49D68f9D0B564089C545C0768A33205f'
