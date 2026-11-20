@@ -20,8 +20,11 @@ import { CopyButton } from '../components/CopyButton'
 import { ExplorerLink } from '../components/ExplorerLink'
 import { RoleBadge } from '../components/RoleBadge'
 import { RpcOverrideForm } from '../components/RpcOverrideForm'
+import { Breadcrumbs } from '../components/ui/Breadcrumbs'
+import { ReceiptCard } from '../components/ui/ReceiptCard'
 import { useNetworkParam } from '../hooks/useNetworkParam'
 import { getRpcOverride } from '../lib/rpc-overrides'
+import '../styles/overview.css'
 
 function hasUnavailable(balances: AddressBalances): boolean {
   if (balances.native.status === 'unavailable') return true
@@ -107,40 +110,42 @@ export function OverviewPage() {
   const showRpcOverride = rpcOverrideSticky || needsRpcOverride
 
   return (
-    <div className="page">
-      <section className="hero-block">
-        <p className="eyebrow">{NETWORKS[networkId].name}</p>
-        <h1>SettlementOS address directory</h1>
-        <p className="lede">
-          Every known contract, operator, treasury, and entity wallet on this
-          testnet — labeled from the address book, balances read live from public
-          RPCs.
-        </p>
-        <div className="cta-row">
+    <div className="page overview-page">
+      <Breadcrumbs
+        items={[
+          { label: NETWORKS[networkId].name, href: `/${networkId}` },
+          { label: 'Overview' },
+        ]}
+      />
+
+      <ReceiptCard
+        title="SettlementOS address directory"
+        note="Every known contract, operator, treasury, and entity wallet on this testnet — labeled from the address book, balances read live from public RPCs."
+        action={
           <Link className="btn-primary" to={`/${networkId}/graph`}>
             Open relationship graph
           </Link>
+        }
+      >
+        <div className="directory-toolbar" aria-label="Directory filters">
+          <label className="directory-search">
+            <span className="visually-hidden">Filter addresses</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter by label, role, or address…"
+              autoComplete="off"
+            />
+          </label>
+          <p className="directory-meta muted">
+            {filtered.length === entries.length
+              ? `${entries.length} addresses`
+              : `${filtered.length} of ${entries.length} addresses`}
+            {freshnessLabel ? ` · ${freshnessLabel}` : null}
+          </p>
         </div>
-      </section>
-
-      <section className="directory-toolbar" aria-label="Directory filters">
-        <label className="directory-search">
-          <span className="visually-hidden">Filter addresses</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter by label, role, or address…"
-            autoComplete="off"
-          />
-        </label>
-        <p className="directory-meta muted">
-          {filtered.length === entries.length
-            ? `${entries.length} addresses`
-            : `${filtered.length} of ${entries.length} addresses`}
-          {freshnessLabel ? ` · ${freshnessLabel}` : null}
-        </p>
-      </section>
+      </ReceiptCard>
 
       {showRpcOverride ? (
         <section className="section" aria-label="RPC endpoint override">
@@ -169,13 +174,13 @@ export function OverviewPage() {
           <p className="muted">No addresses match “{query.trim()}”.</p>
         </section>
       ) : (
-        ROLE_GROUP_ORDER.map((group) => {
-          const rows = grouped.get(group) ?? []
-          if (rows.length === 0) return null
-          return (
-            <section key={group} className="section">
-              <h2>{group}</h2>
-              <div className="address-list">
+        <div className="overview-groups">
+          {ROLE_GROUP_ORDER.map((group) => {
+            const rows = grouped.get(group) ?? []
+            if (rows.length === 0) return null
+            return (
+              <section key={group} className="overview-group">
+                <h2>{group}</h2>
                 {rows.map((entry) => (
                   <AddressDirectoryRow
                     key={`${entry.networkId}-${entry.address}`}
@@ -184,18 +189,16 @@ export function OverviewPage() {
                     balances={balances[entry.address.toLowerCase()]}
                   />
                 ))}
-              </div>
-            </section>
-          )
-        })
+              </section>
+            )
+          })}
+        </div>
       )}
 
-      <section className="section">
-        <h2>Entities across networks</h2>
-        <p className="muted">
-          One entity, one wallet per live network — follow settlement paths
-          across Base Sepolia, ForteL2, and Polygon Amoy.
-        </p>
+      <ReceiptCard
+        title="Entities across networks"
+        note="One entity, one wallet per live network — follow settlement paths across Base Sepolia, ForteL2, and Polygon Amoy."
+      >
         <div className="entity-links">
           {ENTITIES.map((entity) => (
             <Link
@@ -207,7 +210,7 @@ export function OverviewPage() {
             </Link>
           ))}
         </div>
-      </section>
+      </ReceiptCard>
     </div>
   )
 }
@@ -240,21 +243,19 @@ function AddressDirectoryRow({
   }
 
   return (
-    <article
-      className="address-row address-row-clickable"
+    <div
+      className="overview-address"
       role="link"
       tabIndex={0}
       onClick={onRowClick}
       onKeyDown={onRowKeyDown}
       aria-label={`View transactions for ${entry.label}`}
     >
-      <div className="address-row-main">
-        <div className="address-row-title">
-          <Link to={detailPath}>{entry.label}</Link>
-          <RoleBadge role={entry.role} />
-          <span className="row-hint">View txs →</span>
-        </div>
-        <div className="address-row-meta">
+      <ReceiptCard
+        status={<RoleBadge role={entry.role} />}
+        title={<Link to={detailPath}>{entry.label}</Link>}
+      >
+        <div className="overview-address-meta">
           <span className="mono">{truncateAddress(entry.address)}</span>
           <CopyButton text={entry.address} />
           {NETWORKS[networkId].explorerName ? (
@@ -265,9 +266,10 @@ function AddressDirectoryRow({
           {entry.entityId ? (
             <Link to={`/entity/${entry.entityId}`}>Entity page</Link>
           ) : null}
+          <span className="row-hint">View txs →</span>
         </div>
-      </div>
-      <BalanceChips balances={balances} />
-    </article>
+        <BalanceChips balances={balances} />
+      </ReceiptCard>
+    </div>
   )
 }

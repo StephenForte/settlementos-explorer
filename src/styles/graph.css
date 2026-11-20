@@ -1,0 +1,23 @@
+.graph-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.graph-frame {
+  min-width: 0;
+  max-width: 100%;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-md);
+  overflow: hidden;
+}
+
+.graph-page .graph-layout,
+.graph-page .graph-canvas,
+.graph-page .graph-side,
+.graph-page .reactflow-host {
+  min-width: 0;
+  max-width: 100%;
+}
