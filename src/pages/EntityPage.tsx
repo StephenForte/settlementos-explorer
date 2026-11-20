@@ -12,35 +12,59 @@ import { BalanceChips } from '../components/BalanceChips'
 import { StatusBanner } from '../components/StatusBanner'
 import { TransferTable } from '../components/TransferTable'
 import { TxLink } from '../components/TxLink'
+import { AmountDisplay } from '../components/ui/AmountDisplay'
+import { Breadcrumbs } from '../components/ui/Breadcrumbs'
+import { ReceiptCard } from '../components/ui/ReceiptCard'
 import { useAsync } from '../hooks/useAsync'
 import { formatTimestamp } from '../lib/format'
+import '../styles/entity.css'
 
 export function EntityPage() {
   const { entityId: raw } = useParams()
   if (!raw || !isEntityId(raw)) {
     return (
-      <div className="page">
-        <StatusBanner tone="error">Unknown entity.</StatusBanner>
+      <div className="page entity-page">
+        <ReceiptCard tone="failed" title="Unknown entity">
+          <StatusBanner tone="error">Unknown entity.</StatusBanner>
+        </ReceiptCard>
       </div>
     )
   }
 
   const entity = getEntity(raw)!
   const wallets = getEntityWallets(raw)
+  const addressWord = wallets.length === 1 ? 'address' : 'addresses'
 
   return (
-    <div className="page">
-      <section className="detail-header">
-        <p className="eyebrow">Cross-network entity</p>
-        <h1>{entity.displayName}</h1>
-        <p className="lede">
-          Wallets and activity across Base Sepolia, ForteL2 Sepolia, and Polygon
-          Amoy, joined into one timeline so settlement paths are visible
-          end-to-end.
-        </p>
-      </section>
+    <div className="page entity-page">
+      <Breadcrumbs
+        items={[
+          { label: 'Overview', href: '/base-sepolia' },
+          { label: entity.displayName },
+        ]}
+      />
+      <ReceiptCard
+        title={entity.displayName}
+        note="Wallets and activity across Base Sepolia, ForteL2 Sepolia, and Polygon Amoy, joined into one timeline so settlement paths are visible end-to-end."
+      >
+        <AmountDisplay
+          label="Known addresses"
+          amount={String(wallets.length)}
+          unit={addressWord}
+        />
+        <ul className="entity-address-list">
+          {wallets.map((wallet) => (
+            <li key={wallet.networkId}>
+              <Link to={`/${wallet.networkId}/address/${wallet.address}`}>
+                {NETWORKS[wallet.networkId].name}
+              </Link>
+              <span className="mono break">{wallet.address}</span>
+            </li>
+          ))}
+        </ul>
+      </ReceiptCard>
 
-      <div className="entity-grid">
+      <div className="entity-wallets">
         {wallets.map((wallet) => (
           <NetworkWalletPanel
             key={wallet.networkId}
@@ -70,12 +94,15 @@ function NetworkWalletPanel({
   )
 
   return (
-    <section className="section panel">
-      <div className="section-head">
-        <h2>{NETWORKS[networkId].name}</h2>
+    <ReceiptCard
+      title={NETWORKS[networkId].name}
+      action={
         <Link to={`/${networkId}/address/${address}`}>Address detail</Link>
-      </div>
-      <p className="mono small break">{address}</p>
+      }
+    >
+      <p className="entity-wallet-address">
+        <span className="mono small break">{address}</span>
+      </p>
       {balances.status === 'ok' ? (
         <BalanceChips
           balances={balances.data}
@@ -124,7 +151,7 @@ function NetworkWalletPanel({
       ) : (
         <p className="muted">Loading history…</p>
       )}
-    </section>
+    </ReceiptCard>
   )
 }
 
@@ -197,125 +224,110 @@ function MergedTimeline({
 
   return (
     <section className="section">
-      <h2>Merged activity</h2>
-      {merged.status === 'loading' ? (
-        <p className="muted">Merging timelines…</p>
-      ) : merged.status === 'error' ? (
-        <StatusBanner tone="error">{merged.error}</StatusBanner>
-      ) : (
-        <>
-          {merged.data.failures.length > 0 ? (
-            <StatusBanner tone="warn">
-              Partial history:{' '}
-              {merged.data.failures
-                .map(
-                  (f) =>
-                    `${NETWORKS[f.networkId].name} unavailable (${f.error})`,
-                )
-                .join('; ')}
-            </StatusBanner>
-          ) : null}
-          {merged.data.items.length === 0 ? (
-            <p className="muted">No activity yet across networks.</p>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Network</th>
-                    <th>Event</th>
-                    <th>Amount</th>
-                    <th>Time</th>
-                    <th>Tx</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {merged.data.items.slice(0, 40).map((item) => {
-                    if (item.kind === 'transfer') {
-                      return (
-                        <tr
-                          key={`t-${item.networkId}-${item.txHash}-${item.from}-${item.to}-${item.token.address}`}
-                        >
-                          <td>{NETWORKS[item.networkId].name}</td>
-                          <td>
-                            {item.fromLabel} → {item.toLabel}
-                            <div className="muted small">Token transfer</div>
-                          </td>
-                          <td>
-                            {item.amountFormatted} {item.token.symbol}
-                          </td>
-                          <td>{formatTimestamp(item.timestamp)}</td>
-                          <td>
-                            <TxLink
-                              networkId={item.networkId}
-                              hash={item.txHash}
-                              className="mono"
-                            >
-                              {truncateAddress(item.txHash, 6)}
-                            </TxLink>
-                          </td>
-                        </tr>
-                      )
-                    }
-                    if (item.kind === 'native') {
-                      return (
-                        <tr
-                          key={`n-${item.networkId}-${item.txHash}-${item.from}-${item.to}`}
-                        >
-                          <td>{NETWORKS[item.networkId].name}</td>
-                          <td>
-                            {item.fromLabel} → {item.toLabel}
-                            <div className="muted small">
-                              Native {item.symbol}
-                              {item.method ? ` · ${item.method}` : ''}
-                            </div>
-                          </td>
-                          <td>
-                            {item.amountFormatted} {item.symbol}
-                          </td>
-                          <td>{formatTimestamp(item.timestamp)}</td>
-                          <td>
-                            <TxLink
-                              networkId={item.networkId}
-                              hash={item.txHash}
-                              className="mono"
-                            >
-                              {truncateAddress(item.txHash, 6)}
-                            </TxLink>
-                          </td>
-                        </tr>
-                      )
-                    }
+      <ReceiptCard title="Merged activity">
+        {merged.status === 'loading' ? (
+          <p className="muted">Merging timelines…</p>
+        ) : merged.status === 'error' ? (
+          <StatusBanner tone="error">{merged.error}</StatusBanner>
+        ) : (
+          <>
+            {merged.data.failures.length > 0 ? (
+              <StatusBanner tone="warn">
+                Partial history:{' '}
+                {merged.data.failures
+                  .map(
+                    (f) =>
+                      `${NETWORKS[f.networkId].name} unavailable (${f.error})`,
+                  )
+                  .join('; ')}
+              </StatusBanner>
+            ) : null}
+            {merged.data.items.length === 0 ? (
+              <p className="muted">No activity yet across networks.</p>
+            ) : (
+              <ol className="entity-timeline">
+                {merged.data.items.slice(0, 40).map((item) => {
+                  if (item.kind === 'transfer') {
                     return (
-                      <tr
-                        key={`e-${item.networkId}-${item.txHash}-${item.eventName}`}
+                      <li
+                        className="entity-timeline-item"
+                        key={`t-${item.networkId}-${item.txHash}-${item.from}-${item.to}-${item.token.address}`}
                       >
-                        <td>{NETWORKS[item.networkId].name}</td>
-                        <td>{item.eventName}</td>
-                        <td>
-                          {item.amountFormatted
-                            ? `${item.amountFormatted}${item.token ? ` ${item.token.symbol}` : ''}`
-                            : '—'}
-                        </td>
-                        <td>{formatTimestamp(item.timestamp)}</td>
-                        <td>
-                          <TxLink
-                            networkId={item.networkId}
-                            hash={item.txHash}
-                            className="mono"
-                          >
-                            {truncateAddress(item.txHash, 6)}
-                          </TxLink>
-                        </td>
-                      </tr>
+                        <div>{NETWORKS[item.networkId].name}</div>
+                        <div>
+                          {item.fromLabel} → {item.toLabel}
+                          <div className="muted small">Token transfer</div>
+                        </div>
+                        <div>
+                          {item.amountFormatted} {item.token.symbol}
+                        </div>
+                        <div>{formatTimestamp(item.timestamp)}</div>
+                        <TxLink
+                          networkId={item.networkId}
+                          hash={item.txHash}
+                          className="mono"
+                        >
+                          {truncateAddress(item.txHash, 6)}
+                        </TxLink>
+                      </li>
                     )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
+                  }
+                  if (item.kind === 'native') {
+                    return (
+                      <li
+                        className="entity-timeline-item"
+                        key={`n-${item.networkId}-${item.txHash}-${item.from}-${item.to}`}
+                      >
+                        <div>{NETWORKS[item.networkId].name}</div>
+                        <div>
+                          {item.fromLabel} → {item.toLabel}
+                          <div className="muted small">
+                            Native {item.symbol}
+                            {item.method ? ` · ${item.method}` : ''}
+                          </div>
+                        </div>
+                        <div>
+                          {item.amountFormatted} {item.symbol}
+                        </div>
+                        <div>{formatTimestamp(item.timestamp)}</div>
+                        <TxLink
+                          networkId={item.networkId}
+                          hash={item.txHash}
+                          className="mono"
+                        >
+                          {truncateAddress(item.txHash, 6)}
+                        </TxLink>
+                      </li>
+                    )
+                  }
+                  return (
+                    <li
+                      className="entity-timeline-item"
+                      key={`e-${item.networkId}-${item.txHash}-${item.eventName}`}
+                    >
+                      <div>{NETWORKS[item.networkId].name}</div>
+                      <div>{item.eventName}</div>
+                      <div>
+                        {item.amountFormatted
+                          ? `${item.amountFormatted}${item.token ? ` ${item.token.symbol}` : ''}`
+                          : '—'}
+                      </div>
+                      <div>{formatTimestamp(item.timestamp)}</div>
+                      <TxLink
+                        networkId={item.networkId}
+                        hash={item.txHash}
+                        className="mono"
+                      >
+                        {truncateAddress(item.txHash, 6)}
+                      </TxLink>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </>
+        )}
+      </ReceiptCard>
     </section>
   )
 }
