@@ -35,17 +35,20 @@ const PAYMENT_ID = ('0x' + 'aa'.repeat(32)) as Hex
 const ROUTE_ID = ('0x' + 'bb'.repeat(32)) as Hex
 
 const mocks = vi.hoisted(() => {
+  const request = vi.fn()
   const getTransaction = vi.fn()
   const getTransactionReceipt = vi.fn()
   const getBlock = vi.fn()
   const getBlockNumber = vi.fn()
   const getPublicClient = vi.fn(() => ({
+    request,
     getTransaction,
     getTransactionReceipt,
     getBlock,
     getBlockNumber,
   }))
   return {
+    request,
     getTransaction,
     getTransactionReceipt,
     getBlock,
@@ -62,6 +65,7 @@ afterEach(() => {
   cacheClear()
   vi.clearAllMocks()
   mocks.getPublicClient.mockImplementation(() => ({
+    request: mocks.request,
     getTransaction: mocks.getTransaction,
     getTransactionReceipt: mocks.getTransactionReceipt,
     getBlock: mocks.getBlock,
@@ -350,6 +354,51 @@ describe('getTransactionDetail', () => {
     expect(result.logs.map((l) => (l.kind === 'escrow' ? l.eventName : l.kind))).toEqual(
       ['erc20-transfer', 'PaymentSettled'],
     )
+  })
+
+  const nativeHash = '0x7ca9800e724c5c8bf5633d29e078192f2fb234737ecddcb120c32ff9d4d61be7'
+  const blockHash = '0xd9e8a5b8c741dd99675f7e629d188e53dcc272092f86468145a0c56fcf44bf34'
+  const parentHash = '0xd41092a4990c8d88e65e48a73cc102b509c5203b9c2d3673351a802fe6661896'
+  const sender = '0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2'
+  const nativeTx = { ...minedTx(), from: sender, to: sender, blockHash, blockNumber: 3845842n, hash: nativeHash }
+  function nativeFixture(transactions = [nativeTx]) {
+    mocks.getTransaction.mockResolvedValue(nativeTx)
+    mocks.getTransactionReceipt.mockResolvedValue({
+      ...minedReceipt([]), gasUsed: 0x57a8n, effectiveGasPrice: 0x187b4n, l1Fee: '0x188f5',
+    })
+    mocks.getBlock.mockResolvedValue({ hash: blockHash, parentHash, timestamp: 1n, transactions })
+    mocks.getBlockNumber.mockResolvedValue(nativeTx.blockNumber)
+    mocks.request.mockImplementation(async ({ params }) => {
+      expect(params[0]).toBe(sender)
+      const balances = new Map([[parentHash, '0x23861f567d5fb8'], [blockHash, '0x23861ed05c9ca3']])
+      return balances.get(params[1].blockHash)
+    })
+  }
+
+  it('reads the two historical balances independently of both receipt fees', async () => {
+    nativeFixture()
+    expect(await getTransactionDetail('fortel2-sepolia', nativeHash)).toMatchObject({
+      l2ExecutionFeeWei: 2_250_193_440n, l1DataFeeWei: 100_597n,
+      senderBalanceChangeWei: -2_250_294_037n,
+    })
+    expect(mocks.request).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ['another outgoing transaction', { ...nativeTx, hash: HASH }],
+    ['incoming native value', { ...nativeTx, from: ESCROW, value: 1n, hash: HASH }],
+  ] as const)('leaves the ledger unchecked with %s', async (_, other) => {
+    nativeFixture([nativeTx, other])
+    expect(await getTransactionDetail('fortel2-sepolia', nativeHash)).toMatchObject({ senderBalanceChangeWei: null })
+    expect(mocks.request).not.toHaveBeenCalled()
+  })
+
+  it('keeps the mined receipt when the archive has pruned the sender balance', async () => {
+    nativeFixture()
+    mocks.request.mockRejectedValue(new Error('missing trie node'))
+    expect(await getTransactionDetail('fortel2-sepolia', nativeHash)).toMatchObject({
+      status: 'mined', senderBalanceChangeWei: null, l1DataFeeWei: 100_597n,
+    })
   })
 
   it('caches a mined lookup so a second call does not re-hit RPC', async () => {

@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 import {
   formatGwei,
@@ -7,11 +8,12 @@ import {
   parseTxHash,
   summarizeInput,
   type DecodedTxLog,
+  type Erc20TransferLog,
   type MinedTxLookup,
   type PendingTxLookup,
   type TxLookup,
 } from '../chain/transaction'
-import { labelForAddress, lookupAddress } from '../config/address-book'
+import { getEscrowAddress, labelForAddress, lookupAddress } from '../config/address-book'
 import {
   explorerTxUrl,
   isNetworkId,
@@ -26,6 +28,12 @@ import { RpcOverrideForm } from '../components/RpcOverrideForm'
 import { StatusBanner } from '../components/StatusBanner'
 import { useAsync } from '../hooks/useAsync'
 import { formatNative, formatTimestamp } from '../lib/format'
+
+import {
+  AmountDisplay, Breadcrumbs, DetailsPanel, LedgerList, PageSplit, ReceiptCard, StatusPill,
+  type DetailRow, type LedgerEntry,
+} from '../components/ui'
+import '../styles/transaction.css'
 
 /** D33: a bare `/tx/<hash>` is a ForteL2 link — Base and Amoy have public explorers. */
 const BARE_TX_DEFAULT_NETWORK: NetworkId = 'fortel2-sepolia'
@@ -96,7 +104,8 @@ function TransactionDetail({
   )
 
   return (
-    <div className="page">
+    <div className="page tx-page">
+      <Breadcrumbs items={[{ label: NETWORKS[networkId].name, href: `/${networkId}` }, { label: 'Transaction' }]} />
       <TxHeader networkId={networkId} hash={hash} />
       {lookup.status === 'loading' ? (
         <p className="muted">Loading transaction…</p>
@@ -117,21 +126,12 @@ function TransactionDetail({
 }
 
 function TxHeader({ networkId, hash }: { networkId: NetworkId; hash: string }) {
-  const explorerName = NETWORKS[networkId].explorerName
   return (
-    <section className="detail-header">
+    <header className="detail-header">
       <p className="eyebrow">{NETWORKS[networkId].name}</p>
       <h1>Transaction</h1>
-      <div className="address-row-meta">
-        <span className="mono break">{hash}</span>
-        <CopyButton text={hash} />
-        {explorerName ? (
-          <ExplorerLink href={explorerTxUrl(networkId, hash)}>
-            View on {explorerName} ↗
-          </ExplorerLink>
-        ) : null}
-      </div>
-    </section>
+      <span className="mono muted small break">{hash}</span>
+    </header>
   )
 }
 
@@ -180,157 +180,354 @@ function TxBody({
   }
 
   if (result.status === 'pending') {
-    return (
-      <>
-        <StatusBanner tone="info">
-          Pending — this transaction is not yet included in a block.
-        </StatusBanner>
-        <PendingFields tx={result} networkId={networkId} />
-      </>
-    )
+    return <PageSplit main={
+      <ReceiptCard status={<StatusPill status="pending">Pending</StatusPill>}
+        title="Awaiting inclusion in a block" action={<CopyLink />}/>
+    } side={<TechnicalDetails tx={result} />} />
   }
 
-  return <MinedFields tx={result} networkId={networkId} />
+  return <MinedReceipt tx={result} />
 }
 
-function PendingFields({
-  tx,
-  networkId,
-}: {
-  tx: PendingTxLookup
-  networkId: NetworkId
-}) {
+function CopyLink() {
+  return <CopyButton text={window.location.href} label="Copy link" />
+}
+
+function titleFor(tx: MinedTxLookup, transfers: Erc20TransferLog[]) {
+  if (tx.receiptStatus === 'reverted') return 'Transaction reverted'
+  const escrowAddress = getEscrowAddress(tx.networkId)?.toLowerCase()
+  const escrow = tx.logs.find(
+    (log) =>
+      log.kind === 'escrow' && log.address.toLowerCase() === escrowAddress,
+  )
+  if (escrow?.kind === 'escrow') {
+    switch (escrow.eventName) {
+      case 'PaymentInitiated':
+        return `${escrow.fromLabel ?? 'Sender'} initiated a payment · ${escrow.detail}`
+      case 'PaymentSettled':
+        return `Payment ${escrow.detail}`
+      case 'PaymentRefunded':
+        return `Payment refunded to ${escrow.toLabel}`
+    }
+  }
+  const sender = labelForAddress(tx.networkId, tx.from)
+  if (!tx.to) return `${sender} created a contract`
+  const recipient = labelForAddress(tx.networkId, tx.to)
+  if (transfers.length === 1)
+    return `${transfers[0].fromLabel} sent tokens to ${transfers[0].toLabel}`
+  if (transfers.length > 1)
+    return `${sender} submitted ${transfers.length} token transfers`
+  if (tx.input !== '0x' && tx.from.toLowerCase() === tx.to.toLowerCase())
+    return `${sender} submitted a transaction to itself`
+  if (tx.input !== '0x') return `${sender} called ${recipient}`
+  return `${sender} sent ${NETWORKS[tx.networkId].nativeSymbol} to ${recipient}`
+}
+
+function tokenFigure(log: Erc20TransferLog, value: bigint) {
+  return log.token ? formatUnits(value, log.token.decimals) : value.toString()
+}
+
+function MinedReceipt({ tx }: { tx: MinedTxLookup }) {
+  const failed = tx.receiptStatus === 'reverted'
+  const transfers = failed
+    ? []
+    : tx.logs.filter((log) => log.kind === 'erc20-transfer')
+  const symbol = NETWORKS[tx.networkId].nativeSymbol
+  const value = failed ? 0n : tx.value
+  const fee =
+    tx.l2ExecutionFeeWei == null
+      ? null
+      : tx.l2ExecutionFeeWei + (tx.l1DataFeeWei ?? 0n)
+  const figures = transfers.map((log) => ({
+    amount: tokenFigure(log, log.amountRaw),
+    unit: log.token?.symbol ?? log.address,
+    from: log.fromLabel,
+    to: log.toLabel,
+  }))
+  if (value || !figures.length)
+    figures.unshift({
+      amount: formatUnits(value, 18),
+      unit: symbol,
+      from: labelForAddress(tx.networkId, tx.from),
+      to: tx.to ? labelForAddress(tx.networkId, tx.to) : 'New contract',
+    })
   return (
-    <section className="section">
-      <h2>Overview</h2>
-      <FieldTable>
-        <Field label="From">
-          <AddressValue networkId={networkId} address={tx.from} />
-        </Field>
-        <Field label="To">
-          <AddressValue networkId={networkId} address={tx.to} />
-        </Field>
-        <Field label="Value">
-          {formatNative(tx.value)} {NETWORKS[networkId].nativeSymbol}
-        </Field>
-        <Field label="Nonce">{tx.nonce}</Field>
-        <Field label="Type">{tx.type}</Field>
-        <Field label="Input">
-          <InputValue input={tx.input} />
-        </Field>
-      </FieldTable>
-    </section>
+    <PageSplit
+      main={
+        <>
+          <ReceiptCard
+            tone={failed ? 'failed' : 'default'}
+            title={titleFor(tx, transfers)}
+            status={
+              <StatusPill status={failed ? 'failed' : 'success'}>
+                {failed ? 'Failed' : 'Success'}
+              </StatusPill>
+            }
+            note={`Included in block ${tx.blockNumber} · ${tx.confirmations.toLocaleString()} confirmations`}
+            action={<CopyLink />}
+          >
+            {failed && (
+              <p>
+                The transaction reverted. No assets moved. Network fees were
+                still paid.
+              </p>
+            )}
+            {figures.map((figure, index) => (
+              <div className="amount-pair" key={index}>
+                <AmountDisplay
+                  label="Sent"
+                  amount={figure.amount}
+                  unit={figure.unit}
+                  sub={`From ${figure.from}`}
+                />
+                <AmountDisplay
+                  label="Received"
+                  amount={figure.amount}
+                  unit={figure.unit}
+                  sub={`To ${figure.to}`}
+                />
+              </div>
+            ))}
+            <div className="tx-cost">
+              Total fee{' '}
+              <strong>
+                {fee == null
+                  ? 'Unavailable'
+                  : `${formatUnits(fee, 18)} ${symbol}`}
+              </strong>
+            </div>
+          </ReceiptCard>
+          <NativeLedger tx={tx} value={value} />
+          <TokenMovements transfers={transfers} sender={tx.from} />
+        </>
+      }
+      side={<TechnicalDetails tx={tx} />}
+    />
   )
 }
 
-function MinedFields({
-  tx,
-  networkId,
+function UncheckedRows({
+  entries,
+  totalLabel,
+  total,
 }: {
-  tx: MinedTxLookup
-  networkId: NetworkId
+  entries: LedgerEntry[]
+  totalLabel: string
+  total: string
 }) {
-  const gasLimit = tx.gas
-  const pct =
-    gasLimit > 0n
-      ? ((Number(tx.gasUsed) * 1000) / Number(gasLimit) / 10).toFixed(1)
-      : '0.0'
   return (
     <>
-      <section className="section">
-        <h2>Overview</h2>
-        <FieldTable>
-          <Field label="Status">
-            {tx.receiptStatus === 'success' ? 'Success' : 'Failed'}
-          </Field>
-          <Field label="Block">
-            <Link to={`/${networkId}/block/${tx.blockNumber.toString()}`}>
-              {tx.blockNumber.toString()}
-            </Link>
-          </Field>
-          <Field label="Confirmations">{tx.confirmations}</Field>
-          <Field label="Timestamp">
-            {formatTimestamp(tx.timestamp)}{' '}
-            <span className="muted">({formatRelativeAge(tx.timestamp)})</span>
-          </Field>
-          <Field label="From">
-            <AddressValue networkId={networkId} address={tx.from} />
-          </Field>
-          <Field label="To">
-            {tx.to ? (
-              <AddressValue networkId={networkId} address={tx.to} />
-            ) : (
-              <>
-                Contract creation
-                {tx.contractAddress ? (
-                  <AddressValue
-                    networkId={networkId}
-                    address={tx.contractAddress}
-                  />
-                ) : null}
-              </>
-            )}
-          </Field>
-          <Field label="Value">
-            {formatNative(tx.value)} {NETWORKS[networkId].nativeSymbol}
-          </Field>
-          <Field label="L2 execution fee">
-            {tx.l2ExecutionFeeWei != null
-              ? `${formatGwei(tx.l2ExecutionFeeWei)} gwei`
-              : '—'}
-          </Field>
-          <Field label="Gas used / limit">
-            {tx.gasUsed.toString()} / {gasLimit.toString()} ({pct}%)
-          </Field>
-          <Field label="Gas price">
-            {tx.effectiveGasPrice != null
-              ? `${formatGwei(tx.effectiveGasPrice)} gwei`
-              : '—'}
-          </Field>
-          <Field label="Nonce · Index · Type">
-            {tx.nonce} · {tx.transactionIndex ?? '—'} · {tx.type}
-          </Field>
-          <Field label="Input">
-            <InputValue input={tx.input} />
-          </Field>
-        </FieldTable>
-      </section>
-
-      <section className="section">
-        <h2>Events</h2>
-        {tx.logs.length === 0 ? (
-          <p className="muted">No logs.</p>
-        ) : (
-          <LogTable networkId={networkId} logs={tx.logs} />
-        )}
-      </section>
+      {entries.map((row) => (
+        <div className="ledger-row" key={row.id}>
+          <div className="ledger-label">
+            {row.label}
+            <span className="ledger-sub">{row.sub}</span>
+          </div>
+          <p className="ledger-amount">{row.amount}</p>
+        </div>
+      ))}
+      <div className="ledger-row ledger-total">
+        <div>{totalLabel}</div>
+        <p className="ledger-amount">{total}</p>
+      </div>
     </>
   )
 }
 
-function FieldTable({ children }: { children: ReactNode }) {
+function NativeLedger({ tx, value }: { tx: MinedTxLookup; value: bigint }) {
+  const format = (wei: bigint) =>
+    `${formatUnits(wei, 18)} ${NETWORKS[tx.networkId].nativeSymbol}`
+  const entry = (label: string, debit: bigint): LedgerEntry => ({
+    id: label,
+    label,
+    value: -debit,
+    amount: format(-debit),
+  })
+  const entries = [entry('Value sent', value)]
+  if (tx.l2ExecutionFeeWei != null)
+    entries.push(entry('L2 execution fee', tx.l2ExecutionFeeWei))
+  if (tx.l1DataFeeWei != null)
+    entries.push(entry('L1 data fee', tx.l1DataFeeWei))
+  const total = entries.reduce((sum, row) => sum + row.value, 0n)
+  const expected = tx.senderBalanceChangeWei
+  const complete = tx.l2ExecutionFeeWei != null
   return (
-    <div className="table-wrap">
-      <table className="data-table">
-        <tbody>{children}</tbody>
-      </table>
-    </div>
+    <section className="receipt-card">
+      {expected != null && complete ? (
+        <>
+          <LedgerList
+            entries={entries}
+            expectedTotal={expected}
+            formatTotal={format}
+            totalLabel="Sender total"
+          />
+          {expected === total && (
+            <p className="muted small">
+              Matches the sender’s balance change across this block.
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="ledger">
+          <h3 className="ledger-caption">Where the money went</h3>
+          {!complete && <p>L2 execution fee unavailable.</p>}
+          <UncheckedRows
+            entries={entries}
+            totalLabel={complete ? 'Sender total' : 'Known subtotal'}
+            total={format(total)}
+          />
+          <p className="muted small">
+            Not checked against balance. An isolated sender balance change could
+            not be verified.
+          </p>
+        </div>
+      )}
+    </section>
   )
 }
 
-function Field({
-  label,
-  children,
+function TokenMovements({
+  transfers,
+  sender,
 }: {
-  label: string
-  children: ReactNode
+  transfers: Erc20TransferLog[]
+  sender: string
 }) {
+  const groups = new Map<
+    string,
+    { token: Erc20TransferLog; entries: LedgerEntry[] }
+  >()
+  const account = sender.toLowerCase()
+  for (const log of transfers) {
+    const sent = log.from.toLowerCase() === account
+    const received = log.to.toLowerCase() === account
+    if (!sent && !received) continue
+    const address = log.address.toLowerCase()
+    const group = groups.get(address) ?? { token: log, entries: [] }
+    const rows = group.entries
+    const value = (received ? log.amountRaw : 0n) - (sent ? log.amountRaw : 0n)
+    rows.push({
+      id: String(rows.length),
+      label: `${log.fromLabel} → ${log.toLabel}`,
+      sub:
+        sent && received
+          ? `Self-transfer · ${tokenFigure(log, log.amountRaw)}`
+          : undefined,
+      value,
+      amount: tokenFigure(log, value),
+    })
+    groups.set(address, group)
+  }
+  if (!groups.size) return null
   return (
-    <tr>
-      <th scope="row">{label}</th>
-      <td>{children}</td>
-    </tr>
+    <section className="receipt-card">
+      <h2 className="receipt-title">Sender token movements</h2>
+      {Array.from(groups, ([address, { token: log, entries }]) => {
+        const net = entries.reduce((sum, row) => sum + row.value, 0n)
+        return (
+          <div key={address}>
+            <h3 className="ledger-caption">
+              {log.token?.symbol ?? 'Token base units'}
+            </h3>
+            <p className="mono muted small">{address}</p>
+            <UncheckedRows
+              entries={entries}
+              totalLabel="Net movement"
+              total={tokenFigure(log, net)}
+            />
+          </div>
+        )
+      })}
+    </section>
   )
+}
+
+function TechnicalDetails({ tx }: { tx: MinedTxLookup | PendingTxLookup }) {
+  const { networkId } = tx
+  const network = NETWORKS[networkId]
+  const rows: DetailRow[] = []
+  function add(label: string, value: DetailRow['value']) {
+    rows.push({ id: label, label, value })
+  }
+  add(
+    'Hash',
+    <>
+      <span className="mono">{tx.hash}</span> <CopyButton text={tx.hash} />
+    </>,
+  )
+  if (network.explorerName)
+    add(
+      'Explorer',
+      <ExplorerLink href={explorerTxUrl(networkId, tx.hash)}>
+        View on {network.explorerName} ↗
+      </ExplorerLink>,
+    )
+  if (tx.status === 'mined') {
+    add(
+      'Status',
+      tx.receiptStatus === 'success'
+        ? 'Confirmed successfully'
+        : 'Execution reverted',
+    )
+    add(
+      'Block',
+      <Link to={`/${networkId}/block/${tx.blockNumber}`}>
+        {tx.blockNumber.toString()}
+      </Link>,
+    )
+    add('Confirmations', tx.confirmations)
+    add(
+      'Timestamp',
+      `${formatTimestamp(tx.timestamp)} (${formatRelativeAge(tx.timestamp)})`,
+    )
+  }
+  add('From', <AddressValue networkId={networkId} address={tx.from} />)
+  add(
+    'To',
+    <>
+      <AddressValue networkId={networkId} address={tx.to} />
+      {!tx.to && tx.status === 'mined' && tx.contractAddress && (
+        <AddressValue networkId={networkId} address={tx.contractAddress} />
+      )}
+    </>,
+  )
+  add('Value', `${formatNative(tx.value)} ${network.nativeSymbol}`)
+  if (tx.status === 'mined') {
+    add(
+      'Execution cost',
+      tx.l2ExecutionFeeWei == null
+        ? '—'
+        : `${formatGwei(tx.l2ExecutionFeeWei)} gwei`,
+    )
+    const pct = tx.gas
+      ? (Number((tx.gasUsed * 1000n) / tx.gas) / 10).toFixed(1)
+      : '0.0'
+    add('Gas used / limit', `${tx.gasUsed} / ${tx.gas} (${pct}%)`)
+    add(
+      'Gas price',
+      tx.effectiveGasPrice == null
+        ? '—'
+        : `${formatGwei(tx.effectiveGasPrice)} gwei`,
+    )
+    add(
+      'Nonce · Index · Type',
+      `${tx.nonce} · ${tx.transactionIndex ?? '—'} · ${tx.type}`,
+    )
+  } else {
+    add('Nonce', tx.nonce)
+    add('Type', tx.type)
+  }
+  add('Input', <InputValue input={tx.input} />)
+  if (tx.status === 'mined')
+    add(
+      'Events',
+      tx.logs.length ? (
+        <LogTable networkId={networkId} logs={tx.logs} />
+      ) : (
+        'No logs.'
+      ),
+    )
+  return <DetailsPanel rows={rows} />
 }
 
 function AddressValue({
@@ -404,7 +601,11 @@ function LogTable({
         </thead>
         <tbody>
           {logs.map((log, i) => (
-            <LogRow key={`${log.address}-${i}`} networkId={networkId} log={log} />
+            <LogRow
+              key={`${log.address}-${i}`}
+              networkId={networkId}
+              log={log}
+            />
           ))}
         </tbody>
       </table>
@@ -455,7 +656,9 @@ function LogRow({
             <div>
               {log.fromLabel ? (
                 log.from ? (
-                  <Link to={`/${networkId}/address/${log.from}`}>{log.fromLabel}</Link>
+                  <Link to={`/${networkId}/address/${log.from}`}>
+                    {log.fromLabel}
+                  </Link>
                 ) : (
                   log.fromLabel
                 )
@@ -463,7 +666,9 @@ function LogRow({
               {' → '}
               {log.toLabel ? (
                 log.to ? (
-                  <Link to={`/${networkId}/address/${log.to}`}>{log.toLabel}</Link>
+                  <Link to={`/${networkId}/address/${log.to}`}>
+                    {log.toLabel}
+                  </Link>
                 ) : (
                   log.toLabel
                 )
