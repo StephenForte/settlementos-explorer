@@ -97,7 +97,7 @@ highest number here.
   chips as a bug.
 
 ### D5: Dark mode is invented, not specified
-- Status: APPROVED
+- Status: SUPERSEDED by D47 (2026-11-19) — F6z retuned the palette; the values below no longer ship
 - Type: design-choice
 - Date: 2026-08-07
 - Source: F6b, PR #6
@@ -118,7 +118,7 @@ highest number here.
   `RoleBadge.test.tsx`.
 
 ### D7: `--mute` darkened to `#66685d` for WCAG AA
-- Status: APPROVED
+- Status: SUPERSEDED by D47 (2026-11-19) — F6z retuned the palette; the values below no longer ship
 - Type: design-choice
 - Date: 2026-08-07
 - Source: review of F6b; PR #7
@@ -1100,4 +1100,146 @@ highest number here.
   Vite 8.3.5 clears that high, and `npm install` of it crashes npm 10.9.8's
   arborist (`edgesOut` on an optional Vitest peer), so it is not in this
   change. Trivy did not report Vite.
+
+
+### D42: receipt-first redesign — adopt the reference layout; page CSS lives in per-page files
+- Status: APPROVED (planner, 2026-11-19 — palette retune flagged for operator sign-off on F6z's PR)
+- Type: design-choice
+- Date: 2026-11-19
+- Source: operator request 2026-11-19 with a reference mock ("Crypto Transaction
+  Receipt Page" — receipt-first layout, ledger that reconciles, technical-details
+  side panel, failed state, light + dark, desktop + mobile)
+- Detail: The explorer moves from "table of fields" pages to **receipt-first**
+  pages. What we take from the reference: (1) a headline card that says in plain
+  words what happened ("ACME US Inc paid Tokyo Trading KK · USD → JPY"), status
+  pill + finality note, sent / received amounts large, cost line, copy-link
+  action; (2) a **"Where the money went" ledger** whose rows sum exactly (to the
+  wei / token base unit) to the net change it claims; (3) a collapsible
+  **Technical details** side panel (hash, block, time, from/to, status, gas,
+  nonce, raw links) that stacks under the receipt below 900px; (4) breadcrumbs;
+  (5) a manual light/dark toggle in the header on top of `prefers-color-scheme`;
+  (6) a designed failed/reverted state. What we do **not** take: the wallet
+  connect chip, the price ticker, the "Sponsored" ad slot, "Share receipt"
+  (copy link is enough), and any USD pricing — we have no price source and will
+  not invent one.
+
+  Palette: F6z retunes the `src/index.css` tokens toward the reference's neutral
+  canvas + single green accent, keeping D7-era AA contrast rules (measured, not
+  eyeballed). This is the subjective part; F6z's PR must carry light and dark
+  screenshots and the operator approves the look **before** wave 2 dispatches.
+
+  CSS ownership for the redesign: `src/index.css` stays the single home of every
+  colour value and shared primitive (F6z only). Wave-2 page tasks add CSS **only**
+  in a new `src/styles/<page>.css` imported by their page, using `var(--*)`
+  tokens and no hex. This is what lets F6aa / F6ab / F6ac run in parallel
+  despite §4's "serialize design tasks" rule — the hot zone is `index.css`, and
+  wave 2 never edits it.
+
+  Task ids after `F6z` continue `F6aa`, `F6ab`, … (two-letter suffix, in plan
+  order). Sub-task suffixes (`-fix`, `-test`) are unchanged.
+
+### D43: ForteL2 address history must cover the whole chain, not a recent window
+- Status: APPROVED
+- Type: bug-fix-approach
+- Date: 2026-11-19
+- Source: operator report 2026-11-19 ("a lot of times this page comes up with
+  little to no data"), reproduced by the planner the same day
+- Detail: For networks with no explorer account API (`etherscanApi: false`, i.e.
+  ForteL2), `src/chain/transfers.ts` discovers native txs by fetching **every one
+  of the last 2,000 blocks** with full transactions (`NATIVE_SCAN_BLOCKS`), and
+  token / escrow logs over the last **50,000** blocks. At ForteL2's 2.00 s/block
+  that is **~67 minutes** of native history and **~28 hours** of token history.
+  Anything older silently does not exist on the page.
+
+  Reproduced 2026-11-19 on `/fortel2-sepolia/address/0xf8b8b3b58ebac9fc530d9244c22f391e90cc8ae2`
+  (head ≈ 3,846,221, public read RPC `https://fortel2-sequencer-rpc.onrender.com`):
+  `eth_getTransactionCount` = **13**, but the page lists **3** txs; nonce at
+  head−1,000,000 is already 10 and at head−2,000,000 is 0, so ten sends sit
+  ~23–46 days back. Page took **37 s** and **2,164 RPC requests** to reach that
+  incomplete result (browser resource timing, cold load).
+
+  Measured capabilities of that RPC (all 2026-11-19, ~0.21–0.30 s each):
+  historical state at old blocks answers (archive — nonce 0 vs 10 at the two
+  depths above); `eth_getLogs` rejects ranges over **100,000** blocks
+  (`-32602 query exceeds max block range 100000`); JSON-RPC batch arrays work.
+
+  **Required outcome:** full-history discovery for ForteL2 with a bounded,
+  measured RPC budget, results rendered progressively, and an explicit coverage
+  statement whenever discovery is incomplete (never an empty table that looks
+  like "no activity"). Recommended method (F6y may argue another with
+  evidence): token + escrow logs over the full chain in ≤100k-block spans with
+  topic filters; native activity located by bisecting historical
+  `(nonce, balance)` state rather than scanning blocks. Known blind spot of
+  bisection, to be disclosed on the page: incoming **zero-value** txs change no
+  state and cannot be found without an indexer.
+
+### D47: receipt palette and theme toggle replace D5 and D7
+- Status: APPROVED (mechanism). Palette subject to operator sign-off on PR #62.
+- Type: design-choice
+- Date: 2026-11-19
+- Source: F6z, PR #62 (`40f1406`), planner review
+- Detail: F6z retuned every token in `src/index.css` toward D42's reference:
+  neutral canvas (`#f6f5f2` light, `#111111` dark) and a single green accent
+  (`--primary #146c36`, the same in both themes). This retires D5's yellow CTA
+  and inverted-cream dark palette, and D7's `--mute #66685d`. The new `--mute`
+  is `#5c5b56` light (6.24 on canvas, 5.81 on surface-soft) and `#b4b3ab` dark
+  (8.97 / 7.37). Planner recomputed every value from the stylesheet: lowest
+  text pair is accent-purple on its tint, 4.78 light / 4.67 dark. All AA-normal,
+  with no large-text exemption. `contrast.test.ts` pins the pairs.
+
+  Theme: system / light / dark. The choice is stored in localStorage key
+  `sos-explorer-theme` (absent = system) and applied as `data-theme` on `<html>`.
+  The `prefers-color-scheme` block and the explicit `[data-theme="dark"]` block
+  carry identical values (planner diffed them: zero drift). Any change to one
+  must change the other.
+
+  `index.html` carries a 10-line blocking script that sets `data-theme` before
+  first paint, which is the only way to avoid a flash of the wrong theme. It
+  accepts only the literal values `light` and `dark`. The app sends no
+  Content-Security-Policy today. If one is ever added, this script needs a hash
+  or nonce, or the toggle will flash.
+
+### D48: the transaction receipt reconciles against chain state, or says it did not
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-11-19
+- Source: F6aa, PR #64 (`6b880ca`), planner review
+- Detail: The sender ledger lists value sent (zero when the tx reverted), the
+  `L2 execution fee` (gasUsed × effectiveGasPrice) and, when the receipt
+  carries `l1Fee`, an `L1 data fee` row. A network whose receipt has no
+  `l1Fee` gets no such row; absence is never shown as zero. The ledger total is
+  compared with an independent figure: the sender's balance at the block minus
+  its balance at the parent, both read by block hash with
+  `requireCanonical: true` (EIP-1898). The comparison is attempted only when
+  the sender has exactly one top-level tx in the block, no top-level tx in the
+  block sends it value, no withdrawal credits it, and it is not the fee
+  recipient. If the observed drop is smaller than the ledger, an internal
+  credit may explain it, so the page says "Not checked against balance"
+  instead of alerting. A larger observed drop is shown as a mismatch. Missing
+  archive state, hash-only block bodies or an RPC error also give "Not checked
+  against balance". The ledger's own sum is never used as the expected total.
+  The view does not trace internal calls.
+- Evidence: planner recomputed from raw RPC (eth_getTransactionReceipt plus
+  eth_getBalance at block−1 and block). ForteL2 0x66ec9ccd… 11,499,509,038 wei,
+  0x8631394a… 13,603,563,929 wei, Base Sepolia reverted 0x77d492ec…
+  10,524,641,224,491 wei, all exact. On the two settlement txs the L1 data
+  fee is over 99% of the cost. The block-hash `eth_getBalance` form works on
+  the ForteL2, Base Sepolia and Polygon Amoy RPCs.
+
+### D49: the address page shows self-sends as Self and names known methods
+- Status: APPROVED
+- Type: design-choice
+- Date: 2026-11-19
+- Source: F6ab, PR #66 (`f129582`), planner review
+- Detail: On the address page, a transfer whose from and to both equal the
+  viewed address shows a neutral "Self" direction chip (`--surface-soft` /
+  `--ink`) with the counterparty "itself", instead of "Out" to its own
+  address. A method selector that matches a function in `src/config/abis.ts`
+  shows the function name. Any other selector shows "Contract call", with the
+  raw selector in a TermTooltip. The address page renders activity as a
+  stacked list. `TransferTable` and `BalanceChips` take these as optional
+  props (`presentation`, `markSelf`, `decodeMethods`, `layout`). Their
+  defaults keep the old table, "Out", raw selector and chips, so other callers
+  are unchanged. The coverage message keeps F6y's wording and conditions and
+  now sits above the receipt card.
 
